@@ -18,6 +18,7 @@ kernel 7.1.5.
 | Headset microphone, 3.5 mm jack | works | [`headset-mic/`](headset-mic/) — one-line `SND_PCI_QUIRK` for ALC256 |
 | OLED minimum brightness too low, uneven steps | works | [`oled-backlight/`](oled-backlight/) — patched VBT raises the firmware's backlight floor |
 | Touchpad left-edge slide does nothing | works | [`touchpad-edge/`](touchpad-edge/) — HID-BPF turns the vendor gesture report into brightness keys |
+| Garbled screen at boot on 7.1.6+ | works, opt-in | [`cdclk-ptl/`](cdclk-ptl/) — rebuilds `xe.ko` with the unmerged upstream CDCLK fix for Panther Lake |
 | Fan RPM readout | works | [`fan/`](fan/) — `honor-zqcp-hwmon` module |
 | Fan control | not available | [`fan/README.md`](fan/README.md) — every OS-side path was tested, the EC ignores all of them |
 | SOF DSP suspend/resume panic | preventive | [`sof-audio/`](sof-audio/) — upstream IPC4 backport; the race never reproduced on this unit |
@@ -31,7 +32,10 @@ intended entry point for a fresh install. `uninstall_patch.sh` reverts it.
 Every step after the ACPI override is independent and only warns on failure.
 
 Optional steps: `SKIP_OLED=1`, `SKIP_EDGE=1`, `SKIP_FAN=1`,
-`SKIP_FINGERPRINT=1`. The backlight floor defaults to `VBT_MIN=12`, measured on
+`SKIP_FINGERPRINT=1`. One step is off by default and has to be asked for:
+`WITH_CDCLK=1` rebuilds `xe.ko` with the Panther Lake cdclk fix, which
+means downloading the distro kernel source and compiling for a few
+minutes. The backlight floor defaults to `VBT_MIN=12`, measured on
 two units; run [`oled-backlight/measure-floor.sh`](oled-backlight/measure-floor.sh)
 if you want to check it against your own panel.
 
@@ -56,6 +60,7 @@ hand. `apply_patch.sh` installs it as its last step.
 | `headset-mic/` | a kernel update leaves the new kernel without the overlay | `auto-rebuild/` hook |
 | `sof-audio/` | same | `auto-rebuild/` hook |
 | `fingerprint/` | a libfprint update replaces the patched package | `auto-rebuild/` hook |
+| `cdclk-ptl/` | a kernel update leaves the new kernel without the overlay | re-run `install.sh`, deliberately not hooked |
 
 Without the hooks, re-run `headset-mic/install.sh` and `sof-audio/install.sh`
 after every kernel update, and `fingerprint/install.sh` after every libfprint
@@ -77,6 +82,9 @@ repo should shrink as they land:
 
 - the `libfprint` id addition for Goodix `27c6:6f94`
 - the `SND_PCI_QUIRK` entry for PCI SSID `1ee7:209d`
+
+[`cdclk-ptl/`](cdclk-ptl/) carries an upstream patch verbatim and should be
+deleted, not upstreamed, as soon as the fix reaches a stable kernel.
 
 The SSDT override is firmware-specific and stays here. The mic-mute fix works
 around a real kernel bug in `hid-input.c`, described in

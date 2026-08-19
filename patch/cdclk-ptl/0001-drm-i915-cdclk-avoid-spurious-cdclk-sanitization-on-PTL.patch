@@ -1,0 +1,46 @@
+From 9da7a384eceee34ee451a3da10ed60bf1b6b7fbb Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Ville=20Syrj=C3=A4l=C3=A4?= <ville.syrjala@linux.intel.com>
+Date: Tue, 7 Jul 2026 17:55:22 +0300
+Subject: [PATCH] drm/i915/cdclk: Avoid spurious cdclk sanitization on PTL+
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Apparently PTL+ no longer has the cd2x pipe select field in
+CDCLK_CTL. Take that into account during CDCLK sanitization.
+
+This currently triggers a spurious CDCLK sanitization during
+driver load on PTL+ which will causes a visible glitch on all
+active displays.
+
+Cc: stable@vger.kernel.org
+Closes: https://gitlab.freedesktop.org/drm/xe/kernel/-/work_items/8550
+Fixes: 3f9de66f8acb ("drm/i915/cdclk: Fix up CDCLK_FREQ_DECIMAL without a full PLL re-enable")
+Signed-off-by: Ville Syrjälä <ville.syrjala@linux.intel.com>
+
+[ Rebased onto the 7.1.y stable series, where bxt_cdclk_cd2x_pipe_mask()
+  does not exist yet. It was introduced by 92cb4a3d0ff7 ("drm/i915/cdclk:
+  Introduce bxt_cdclk_cd2x_pipe_mask() and use it") in drm-intel-next,
+  which is not part of 7.1.y or 7.2. On this branch the same field is
+  cleared with the PIPE_NONE encoding itself, so only the guard is added
+  and the two lines are kept verbatim. No functional difference. ]
+---
+ drivers/gpu/drm/i915/display/intel_cdclk.c | 6 ++++--
+ 1 file changed, 4 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/gpu/drm/i915/display/intel_cdclk.c b/drivers/gpu/drm/i915/display/intel_cdclk.c
+--- a/drivers/gpu/drm/i915/display/intel_cdclk.c
++++ b/drivers/gpu/drm/i915/display/intel_cdclk.c
+@@ -2366,8 +2366,10 @@ static void bxt_sanitize_cdclk(struct intel_display *display)
+ 	 * dividers both syncing to an active pipe, or asynchronously
+ 	 * (PIPE_NONE).
+ 	 */
+-	cdctl &= ~bxt_cdclk_cd2x_pipe(display, INVALID_PIPE);
+-	cdctl |= bxt_cdclk_cd2x_pipe(display, INVALID_PIPE);
++	if (DISPLAY_VER(display) < 30) {
++		cdctl &= ~bxt_cdclk_cd2x_pipe(display, INVALID_PIPE);
++		cdctl |= bxt_cdclk_cd2x_pipe(display, INVALID_PIPE);
++	}
+ 
+ 	if (cdctl != expected) {
+ 		if (DISPLAY_VER(display) < 20) {

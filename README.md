@@ -15,6 +15,7 @@ own README, measurements, and installer.
 | Headset microphone, 3.5 mm jack | works | [`patch/headset-mic/`](patch/headset-mic/) — one-line `SND_PCI_QUIRK` for ALC256 |
 | OLED minimum brightness too low, uneven steps | works | [`patch/oled-backlight/`](patch/oled-backlight/) — patched VBT raises the firmware's backlight floor |
 | Touchpad left-edge slide (brightness gesture) | works | [`patch/touchpad-edge/`](patch/touchpad-edge/) — HID-BPF turns the vendor gesture report into brightness keys. The right edge (volume) goes through the EC and works unaided |
+| Screen garbled at boot, kernel 7.1.6 and newer | works, opt-in | [`patch/cdclk-ptl/`](patch/cdclk-ptl/) — rebuilds `xe.ko` with the upstream CDCLK fix that Panther Lake needs and that is not merged yet |
 | Fan RPM readout | works | [`patch/fan/`](patch/fan/) — `honor-zqcp-hwmon` |
 | Fan control | not available | the EC owns the fan curve and ignores every OS-side path, see [`patch/fan/README.md`](patch/fan/README.md) |
 | SOF DSP suspend/resume panic | preventive | [`patch/sof-audio/`](patch/sof-audio/) — upstream IPC4 backport, the race never reproduced here |
@@ -101,6 +102,7 @@ sudo VBT_MIN=10 ./apply_patch.sh             # a different backlight floor
 | `SKIP_FAN=1` | no fan RPM readout |
 | `SKIP_FINGERPRINT=1` | no `libfprint` rebuild, by far the slowest step |
 | `VBT_MIN=<n>` | backlight floor in n/255, default 12. Measure yours first with `patch/oled-backlight/measure-floor.sh` |
+| `WITH_CDCLK=1` | rebuild `xe.ko` with the Panther Lake cdclk fix. Off by default: it downloads the distro kernel source, about 260 MB, and compiles for a few minutes |
 | `GUARD_ZERO=1` | add a udev rule that bounces a write of `0` to the backlight back to `1`. Writing 0 blanks the panel rather than dimming it, and no VBT value can prevent that. Off by default |
 
 Each fix also has its own installer, if you would rather apply one on its own:
@@ -118,18 +120,20 @@ sudo bash patch/touchpad-edge/install.sh
 | 3 | Adds `acpi_override` to `HOOKS=` in `/etc/mkinitcpio.conf`, right after `autodetect` |
 | 4 | Appends `i8042.dumbkbd=1` to the kernel cmdline in `/etc/default/limine` |
 | 5 | Runs `patch/oled-backlight/install.sh` — patched VBT, `FILES=` entry and `xe.vbt_firmware=` on the cmdline |
-| 6 | Regenerates the initramfs and the bootloader config, once, after all the config edits |
-| 7 | Runs `patch/headset-mic/install.sh` — rebuilds `snd-hda-codec-alc269.ko` with the ALC256 quirk for PCI SSID `1ee7:209d` |
-| 8 | Runs `patch/sof-audio/install.sh` — builds `snd-sof.ko` with the IPC4 backport into the `updates/` overlay |
-| 9 | Runs `patch/micmute/install.sh` — builds and installs the HID-BPF descriptor fixup through `udev-hid-bpf` |
-| 10 | Runs `patch/touchpad-edge/install.sh` — HID-BPF program for the left-edge brightness gesture |
-| 11 | Runs `patch/fan/install.sh` — `honor-zqcp-hwmon`, EC fan tachometers, through DKMS |
-| 12 | Runs `patch/fingerprint/install.sh` — rebuilds `libfprint` with the Goodix `27c6:6f94` id |
-| 13 | Runs `patch/auto-rebuild/install.sh` — pacman hooks that keep steps 7, 8 and 12 applied across package updates |
+| 6 | Runs `patch/cdclk-ptl/install.sh` — rebuilds `xe.ko` with the Panther Lake cdclk fix, into the `updates/` overlay. Only with `WITH_CDCLK=1` |
+| 7 | Regenerates the initramfs and the bootloader config, once, after all the config edits |
+| 8 | Runs `patch/headset-mic/install.sh` — rebuilds `snd-hda-codec-alc269.ko` with the ALC256 quirk for PCI SSID `1ee7:209d` |
+| 9 | Runs `patch/sof-audio/install.sh` — builds `snd-sof.ko` with the IPC4 backport into the `updates/` overlay |
+| 10 | Runs `patch/micmute/install.sh` — builds and installs the HID-BPF descriptor fixup through `udev-hid-bpf` |
+| 11 | Runs `patch/touchpad-edge/install.sh` — HID-BPF program for the left-edge brightness gesture |
+| 12 | Runs `patch/fan/install.sh` — `honor-zqcp-hwmon`, EC fan tachometers, through DKMS |
+| 13 | Runs `patch/fingerprint/install.sh` — rebuilds `libfprint` with the Goodix `27c6:6f94` id |
+| 14 | Runs `patch/auto-rebuild/install.sh` — pacman hooks that keep steps 8, 9 and 13 applied across package updates |
 
-Steps 7 and 8 are skipped with a warning if kernel lockdown or
-`module.sig_enforce=1` would block an unsigned module. Steps 12 and 13 are
-skipped on non-pacman systems.
+Steps 8 and 9 are skipped with a warning if kernel lockdown or
+`module.sig_enforce=1` would block an unsigned module. Steps 13 and 14 are
+skipped on non-pacman systems. Step 6 runs before the initramfs rebuild
+because the early-KMS copy of `xe.ko` is the one that lights the panel.
 
 ### Verifying after reboot
 
@@ -354,6 +358,9 @@ HONOR_ZQC-P_M1010/
 │   │   ├── measure-floor.sh        #   find the lowest duty the panel renders evenly
 │   │   ├── install.sh              #   extract, patch, initramfs + cmdline
 │   │   └── uninstall.sh
+│   ├── cdclk-ptl/                  # boot-time screen corruption on kernels 7.1.6+
+│   │   ├── 0001-drm-i915-cdclk-avoid-spurious-cdclk-sanitization-on-PTL.patch
+│   │   └── install.sh              #   rebuild xe.ko from the distro kernel source
 │   ├── touchpad-edge/              # left-edge slide gesture -> brightness keys
 │   │   ├── honor-tops0102-edge.bpf.c   # HID-BPF device-event hook
 │   │   └── install.sh              #   build + install via udev-hid-bpf

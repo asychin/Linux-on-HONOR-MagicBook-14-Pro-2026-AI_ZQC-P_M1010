@@ -10,6 +10,9 @@
 #   SKIP_EDGE=1          leave the touchpad left-edge gesture dead
 #   SKIP_FAN=1           no fan RPM readout
 #   SKIP_FINGERPRINT=1   no libfprint rebuild (by far the slowest step)
+#   WITH_CDCLK=1         rebuild xe.ko with the Panther Lake cdclk fix;
+#                        off by default, it downloads the kernel source
+#                        and compiles for a few minutes
 #   VBT_MIN=<n>          backlight floor in n/255, default 12; measure yours
 #                        with patch/oled-backlight/measure-floor.sh first
 #
@@ -24,7 +27,7 @@
 #      (see README for the trade-off with Caps Lock LED).
 #   3) Analog 3.5mm-jack headset microphone unusable — PCI SSID 1ee7:209d
 #      is missing from sound/hda/codecs/realtek/alc269.c quirk table.
-#      Step [7/13] rebuilds snd-hda-codec-alc269.ko with the SND_PCI_QUIRK
+#      Step [8/14] rebuilds snd-hda-codec-alc269.ko with the SND_PCI_QUIRK
 #      entry our hardware needs (matches the existing HONOR BRB-X M1010
 #      sibling); see patch/headset-mic/install.sh and the upstream patch
 #      at patch/headset-mic/alc269-honor-zqc-p-m1010.patch.
@@ -33,7 +36,7 @@
 #      ipc_config_data buffer is cached at first ipc_prepare and reused;
 #      on resume the host/link DMA channels are re-allocated with new
 #      tags but the stale cached payload still gets sent to firmware,
-#      producing a ChainDMA collision and DSP panic. Step [8/13] backports
+#      producing a ChainDMA collision and DSP panic. Step [9/14] backports
 #      the upstream fix (thesofproject/linux PR #5762 by @ujfalusi) and
 #      installs the rebuilt snd-sof.ko in the modules updates/ overlay.
 #      Note: on this specific HONOR ZQC-P unit the upstream race was
@@ -54,7 +57,7 @@
 #      collection becomes an input device whose only key is
 #      KEY_MICMUTE. All 59 data bytes carry that usage and hid-input
 #      sets EV_REP, so one vendor report leaves the key held down and
-#      auto-repeating at ~30 Hz. Step [9/13] installs a HID-BPF
+#      auto-repeating at ~30 Hz. Step [10/14] installs a HID-BPF
 #      rdesc_fixup that rewrites the usage page to 0xff00, which
 #      hid-input ignores. Touchscreen, touchpad and the real Fn+F7
 #      (which arrives over WMI, not HID) are unaffected.
@@ -62,24 +65,32 @@
 #   6) The OLED panel does not render its firmware-declared minimum
 #      brightness evenly: the VBT says 6/255, which is 2.4% PWM duty, and
 #      at that level the panel shows a colour cast and visible blotches.
-#      Step [5/13] feeds the driver a VBT with the floor raised to
+#      Step [5/14] feeds the driver a VBT with the floor raised to
 #      12/255, measured on two units. See patch/oled-backlight/.
-#   7) Sliding along the left edge of the touchpad is a HONOR brightness
+#   7) Since kernel 7.1.6 the screen is garbled during boot on Panther
+#      Lake. The shared i915 display code masks a CDCLK_CTL pipe-select
+#      field that display IP 30 no longer has, so the sanitization check
+#      can never match and every driver load forces a full CDCLK PLL
+#      restart while the panel is lit. Upstream commit 2ee8dbd880b1,
+#      stable backport 1e9b961f9f45. The four-line upstream fix is not
+#      merged anywhere yet, so step [6/14] rebuilds xe.ko with it.
+#      OPT-IN, off unless WITH_CDCLK=1. See patch/cdclk-ptl/.
+#   8) Sliding along the left edge of the touchpad is a HONOR brightness
 #      gesture that goes nowhere under Linux: it is reported on a vendor
-#      HID collection that hid-input discards. Step [10/13] installs a
+#      HID collection that hid-input discards. Step [11/14] installs a
 #      HID-BPF program that injects a real brightness key tap per gesture
 #      report. The right edge (volume) reaches the OS through the EC as
 #      ordinary key events and needs nothing. See patch/touchpad-edge/.
-#   8) Fan tachometers are invisible: the ACPI fan participant's _FST is a
-#      stub. Step [11/13] installs a small hwmon module that reads the EC
+#   9) Fan tachometers are invisible: the ACPI fan participant's _FST is a
+#      stub. Step [12/14] installs a small hwmon module that reads the EC
 #      registers directly. Read-only, the EC owns the curve.
 #      See patch/fan/.
-#   9) The fingerprint reader (Goodix 27c6:6f94) is missing from
-#      libfprint's id table. Step [12/13] rebuilds the package with two
+#  10) The fingerprint reader (Goodix 27c6:6f94) is missing from
+#      libfprint's id table. Step [13/14] rebuilds the package with two
 #      lines added. See patch/fingerprint/.
-#  10) The fixes in steps [7/13] and [8/13] live inside kernel modules that
+#  11) The fixes in steps [8/14] and [9/14] live inside kernel modules that
 #      a kernel package update replaces, and the fingerprint patch lives
-#      in libfprint, which a libfprint update replaces. Step [13/13]
+#      in libfprint, which a libfprint update replaces. Step [14/14]
 #      installs pacman hooks that rebuild them automatically, so nothing
 #      silently reverts. See patch/auto-rebuild/.
 #
@@ -113,9 +124,9 @@ req cp
 mkdir -p "$BACKUP"
 
 #────────────────────────────────────────────────────────────────────────
-# [1/13] Backup everything we are about to touch.
+# [1/14] Backup everything we are about to touch.
 #────────────────────────────────────────────────────────────────────────
-echo "[1/13] Backup → $BACKUP"
+echo "[1/14] Backup → $BACKUP"
 cp -a /etc/mkinitcpio.conf                   "$BACKUP/mkinitcpio.conf"
 [[ -d /usr/lib/firmware/acpi ]] && \
     cp -a /usr/lib/firmware/acpi             "$BACKUP/firmware-acpi"
@@ -128,9 +139,9 @@ cp -a /etc/mkinitcpio.conf                   "$BACKUP/mkinitcpio.conf"
 echo "    OK"
 
 #────────────────────────────────────────────────────────────────────────
-# [2/13] Install patched SSDT and mkinitcpio install hook.
+# [2/14] Install patched SSDT and mkinitcpio install hook.
 #────────────────────────────────────────────────────────────────────────
-echo "[2/13] Install patched SSDT + mkinitcpio hook"
+echo "[2/14] Install patched SSDT + mkinitcpio hook"
 install -Dm0644 "$PATCH_DIR/acpi-override/SSDT27_TPD0.aml" \
                 /usr/lib/firmware/acpi/SSDT27_TPD0.aml
 install -Dm0755 "$PATCH_DIR/acpi-override/acpi_override.install" \
@@ -139,9 +150,9 @@ echo "    /usr/lib/firmware/acpi/SSDT27_TPD0.aml"
 echo "    /etc/initcpio/install/acpi_override"
 
 #────────────────────────────────────────────────────────────────────────
-# [3/13] Wire acpi_override into HOOKS=… (right after autodetect).
+# [3/14] Wire acpi_override into HOOKS=… (right after autodetect).
 #────────────────────────────────────────────────────────────────────────
-echo "[3/13] Patch /etc/mkinitcpio.conf"
+echo "[3/14] Patch /etc/mkinitcpio.conf"
 if ! grep -qE '^HOOKS=.*\bacpi_override\b' /etc/mkinitcpio.conf; then
     sed -i 's/\bautodetect\b/autodetect acpi_override/' /etc/mkinitcpio.conf
     echo "    + acpi_override added to HOOKS"
@@ -156,9 +167,9 @@ fi
 echo "    HOOKS=$(grep -E '^HOOKS=' /etc/mkinitcpio.conf)"
 
 #────────────────────────────────────────────────────────────────────────
-# [4/13] Append i8042.dumbkbd=1 to Limine default cmdline (idempotent).
+# [4/14] Append i8042.dumbkbd=1 to Limine default cmdline (idempotent).
 #────────────────────────────────────────────────────────────────────────
-echo "[4/13] Patch /etc/default/limine (i8042.dumbkbd=1)"
+echo "[4/14] Patch /etc/default/limine (i8042.dumbkbd=1)"
 if [[ -f /etc/default/limine ]]; then
     if ! grep -qE 'i8042\.dumbkbd=1' /etc/default/limine; then
         sed -i 's|^\(KERNEL_CMDLINE\[default\]+="[^"]*\)"$|\1 i8042.dumbkbd=1"|' \
@@ -174,16 +185,16 @@ else
 fi
 
 #────────────────────────────────────────────────────────────────────────
-# [5/13] Raise the OLED backlight floor through a patched VBT.
+# [5/14] Raise the OLED backlight floor through a patched VBT.
 # The firmware declares a minimum of 6/255, which lands on 2.4% PWM duty,
 # and this panel does not render that evenly: colour cast and blotches.
 # Measured on two units, the first clean level is just under 4%; the
 # installer defaults to 12/255 = 4.69%. It edits FILES= and the cmdline,
-# so it runs before the single initramfs rebuild in [6/13].
+# so it runs before the single initramfs rebuild in [7/14].
 # Set SKIP_OLED=1 to leave the backlight range alone, or VBT_MIN=<n> to
 # override the floor after running patch/oled-backlight/measure-floor.sh.
 #────────────────────────────────────────────────────────────────────────
-echo "[5/13] Raise the OLED backlight minimum (patched VBT)"
+echo "[5/14] Raise the OLED backlight minimum (patched VBT)"
 if [[ "${SKIP_OLED:-0}" == "1" ]]; then
     echo "    skipped — SKIP_OLED=1"
 elif REGEN=0 bash "$PATCH_DIR/oled-backlight/install.sh"; then
@@ -195,9 +206,35 @@ else
 fi
 
 #────────────────────────────────────────────────────────────────────────
-# [6/13] Rebuild initramfs and regenerate Limine config.
+# [6/14] Rebuild xe.ko with the Panther Lake CDCLK sanitization fix.
+# Since 7.1.6 the shared i915 display code compares a CDCLK_CTL field that
+# Panther Lake no longer has, never matches, and forces a full CDCLK PLL
+# disable+enable while the panel is already lit by the GOP. The result is a
+# corrupted image during boot. The upstream fix exists but is not merged
+# anywhere yet, so the module has to be rebuilt locally.
+# OPT-IN: this one downloads the distro kernel source (about 260 MB) and
+# compiles for several minutes, and it becomes obsolete the moment the fix
+# reaches your kernel. Enable it with WITH_CDCLK=1.
+# It installs into modules updates/ and runs before the single initramfs
+# rebuild in [7/14], because the early-KMS copy of xe.ko is the one that
+# lights the panel.
 #────────────────────────────────────────────────────────────────────────
-echo "[6/13] Rebuild initramfs"
+echo "[6/14] Panther Lake CDCLK fix (xe.ko rebuild)"
+if [[ "${WITH_CDCLK:-0}" != "1" ]]; then
+    echo "    skipped — set WITH_CDCLK=1 to build it"
+    echo "    see patch/cdclk-ptl/README.md for what it fixes"
+elif REGEN=0 bash "$PATCH_DIR/cdclk-ptl/install.sh"; then
+    echo "    OK"
+else
+    echo "    [warn] cdclk fix failed — everything else still applies;"
+    echo "    the boot-time display glitch stays. Inspect"
+    echo "    patch/cdclk-ptl/install.sh output above."
+fi
+
+#────────────────────────────────────────────────────────────────────────
+# [7/14] Rebuild initramfs and regenerate Limine config.
+#────────────────────────────────────────────────────────────────────────
+echo "[7/14] Rebuild initramfs"
 if command -v limine-update >/dev/null; then
     limine-update
 else
@@ -207,7 +244,7 @@ else
 fi
 
 #────────────────────────────────────────────────────────────────────────
-# [7/13] Build + install ALC256 codec quirk for the 3.5mm-jack headset mic.
+# [8/14] Build + install ALC256 codec quirk for the 3.5mm-jack headset mic.
 # Fetches the running kernel's alc269.c from the upstream stable tree,
 # adds SND_PCI_QUIRK(0x1ee7, 0x209d, "HONOR ZQC-P M1010", …) — pin 0x19
 # is wired to the combo jack mic on this board, identical to the existing
@@ -216,7 +253,7 @@ fi
 # The script is idempotent: if the in-tree module already carries the
 # quirk (e.g. after upstream merge), it exits without rebuilding.
 #────────────────────────────────────────────────────────────────────────
-echo "[7/13] Apply ALC256 headset-mic quirk (snd-hda-codec-alc269 rebuild)"
+echo "[8/14] Apply ALC256 headset-mic quirk (snd-hda-codec-alc269 rebuild)"
 if bash "$PATCH_DIR/headset-mic/install.sh"; then
     echo "    OK"
 else
@@ -226,7 +263,7 @@ else
 fi
 
 #────────────────────────────────────────────────────────────────────────
-# [8/13] Build + install SOF IPC4 copier-payload refresh patch
+# [9/14] Build + install SOF IPC4 copier-payload refresh patch
 # (thesofproject/linux PR #5762 by @ujfalusi). Fetches the running
 # kernel's sound/soc/sof/ tree from the upstream stable tree, applies the
 # 33-line ipc4-topology.c fix, builds snd-sof.ko out-of-tree and drops
@@ -238,7 +275,7 @@ fi
 # Skipped silently if kernel lockdown / module.sig_enforce blocks
 # unsigned modules — see patch/sof-audio/install.sh for details.
 #────────────────────────────────────────────────────────────────────────
-echo "[8/13] Apply SOF IPC4 copier-payload refresh (snd-sof rebuild)"
+echo "[9/14] Apply SOF IPC4 copier-payload refresh (snd-sof rebuild)"
 if bash "$PATCH_DIR/sof-audio/install.sh"; then
     echo "    OK"
 else
@@ -249,14 +286,14 @@ else
 fi
 
 #────────────────────────────────────────────────────────────────────────
-# [9/13] Build + install the HID-BPF phantom-KEY_MICMUTE fixup.
+# [10/14] Build + install the HID-BPF phantom-KEY_MICMUTE fixup.
 # Builds patch/micmute/honor-ftsc1000-micmute.bpf.c against the running
 # kernel's BTF and installs it through udev-hid-bpf into
 # /etc/udev-hid-bpf/ with a matching udev rule. Nothing has to be
 # repeated after a kernel update. Requires clang, bpftool and
 # udev-hid-bpf.
 #────────────────────────────────────────────────────────────────────────
-echo "[9/13] Remove phantom KEY_MICMUTE device (HID-BPF descriptor fixup)"
+echo "[10/14] Remove phantom KEY_MICMUTE device (HID-BPF descriptor fixup)"
 if bash "$PATCH_DIR/micmute/install.sh"; then
     echo "    OK"
 else
@@ -266,13 +303,13 @@ else
 fi
 
 #────────────────────────────────────────────────────────────────────────
-# [10/13] Build + install the HID-BPF program that turns the touchpad's
+# [11/14] Build + install the HID-BPF program that turns the touchpad's
 # left-edge slide into brightness keys. The gesture is reported on a
 # vendor collection hid-input ignores; the program injects a consumer
 # key tap per gesture report. The right edge (volume) goes through the
 # EC and needs nothing. Set SKIP_EDGE=1 to skip.
 #────────────────────────────────────────────────────────────────────────
-echo "[10/13] Touchpad left-edge slide → brightness (HID-BPF)"
+echo "[11/14] Touchpad left-edge slide → brightness (HID-BPF)"
 if [[ "${SKIP_EDGE:-0}" == "1" ]]; then
     echo "    skipped — SKIP_EDGE=1"
 elif bash "$PATCH_DIR/touchpad-edge/install.sh" >/dev/null; then
@@ -283,12 +320,12 @@ else
 fi
 
 #────────────────────────────────────────────────────────────────────────
-# [11/13] Build + install honor-zqcp-hwmon, which exposes the EC fan
+# [12/14] Build + install honor-zqcp-hwmon, which exposes the EC fan
 # tachometers to lm_sensors. Read-only: fan speed on this machine is
 # EC-autonomous and cannot be driven from the OS. Uses DKMS when
 # available, so kernel updates rebuild it. Set SKIP_FAN=1 to skip.
 #────────────────────────────────────────────────────────────────────────
-echo "[11/13] Fan RPM readout (honor-zqcp-hwmon)"
+echo "[12/14] Fan RPM readout (honor-zqcp-hwmon)"
 if [[ "${SKIP_FAN:-0}" == "1" ]]; then
     echo "    skipped — SKIP_FAN=1"
 elif bash "$PATCH_DIR/fan/install.sh" >/dev/null; then
@@ -299,12 +336,12 @@ else
 fi
 
 #────────────────────────────────────────────────────────────────────────
-# [12/13] Rebuild libfprint with the Goodix 27c6:6f94 id added, as a
+# [13/14] Rebuild libfprint with the Goodix 27c6:6f94 id added, as a
 # pacman-owned package so it does not conflict on the next update. This
 # is the slowest step by far: it downloads the libfprint sources and
 # builds them. Set SKIP_FINGERPRINT=1 to skip.
 #────────────────────────────────────────────────────────────────────────
-echo "[12/13] Fingerprint reader (libfprint id patch)"
+echo "[13/14] Fingerprint reader (libfprint id patch)"
 if [[ "${SKIP_FINGERPRINT:-0}" == "1" ]]; then
     echo "    skipped — SKIP_FINGERPRINT=1"
 elif ! command -v makepkg >/dev/null; then
@@ -318,12 +355,12 @@ else
 fi
 
 #────────────────────────────────────────────────────────────────────────
-# [13/13] Install pacman hooks that re-apply the fixes a package update
+# [14/14] Install pacman hooks that re-apply the fixes a package update
 # would otherwise revert: a kernel update replaces the modules patched in
-# steps [7/13] and [8/13], and a libfprint update drops the fingerprint
+# steps [8/14] and [9/14], and a libfprint update drops the fingerprint
 # patch. The hooks rebuild them automatically. Arch-like systems only.
 #────────────────────────────────────────────────────────────────────────
-echo "[13/13] Install auto-rebuild pacman hooks"
+echo "[14/14] Install auto-rebuild pacman hooks"
 if command -v pacman >/dev/null && bash "$PATCH_DIR/auto-rebuild/install.sh" >/dev/null; then
     echo "    OK — kernel and libfprint updates will re-apply the fixes"
 elif ! command -v pacman >/dev/null; then
@@ -331,7 +368,9 @@ elif ! command -v pacman >/dev/null; then
     echo "    and patch/sof-audio/install.sh after every kernel update."
 else
     echo "    [warn] hook install failed — the fixes still work, but a kernel"
-    echo "    update will revert steps [7/13] and [8/13] until you re-run them."
+    echo "    update will revert steps [8/14] and [9/14] until you re-run them."
+    echo "    Step [6/14] is not hooked either: rerun it by hand after a"
+    echo "    kernel update, or drop it once the fix lands upstream."
 fi
 
 cat <<EOF

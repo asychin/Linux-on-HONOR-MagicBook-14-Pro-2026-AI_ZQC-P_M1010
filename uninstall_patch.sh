@@ -9,13 +9,13 @@ if (( EUID != 0 )); then
     exit 1
 fi
 
-echo "[1/10] Remove patched SSDT"
+echo "[1/11] Remove patched SSDT"
 rm -fv /usr/lib/firmware/acpi/SSDT27_TPD0.aml
 
-echo "[2/10] Remove mkinitcpio install hook"
+echo "[2/11] Remove mkinitcpio install hook"
 rm -fv /etc/initcpio/install/acpi_override
 
-echo "[3/10] Strip acpi_override from /etc/mkinitcpio.conf and i8042.dumbkbd=1 from cmdline"
+echo "[3/11] Strip acpi_override from /etc/mkinitcpio.conf and i8042.dumbkbd=1 from cmdline"
 sed -i 's/ acpi_override//' /etc/mkinitcpio.conf
 echo "    HOOKS=$(grep -E '^HOOKS=' /etc/mkinitcpio.conf)"
 
@@ -26,7 +26,7 @@ fi
 
 KVER=$(uname -r)
 
-echo "[4/10] Remove the ALC256 codec-quirk overlay and the capture-priority rule"
+echo "[4/11] Remove the ALC256 codec-quirk overlay and the capture-priority rule"
 rm -fv "/usr/lib/modules/${KVER}/updates/snd-hda-codec-alc269.ko.zst" 2>/dev/null || true
 rm -fv /etc/wireplumber/wireplumber.conf.d/51-honor-zqcp-mic-priority.conf 2>/dev/null || true
 rmdir --ignore-fail-on-non-empty /etc/wireplumber/wireplumber.conf.d /etc/wireplumber 2>/dev/null || true
@@ -53,7 +53,7 @@ rm -f /etc/systemd/system/honor-mic-jack-init.service \
       /usr/local/bin/honor-mic-jack-init.sh
 systemctl daemon-reload 2>/dev/null || true
 
-echo "[5/10] Remove SOF IPC4 fix overlay (if present)"
+echo "[5/11] Remove SOF IPC4 fix overlay (if present)"
 SOF_OVERLAY="/usr/lib/modules/${KVER}/updates/snd-sof.ko.zst"
 SOF_BACKUP="/root/snd-sof.ko.zst.orig"
 if [[ -f "$SOF_OVERLAY" ]]; then
@@ -63,14 +63,14 @@ else
 fi
 [[ -f "$SOF_BACKUP" ]] && echo "    in-tree backup at $SOF_BACKUP retained for next install."
 
-echo "[6/10] Remove the auto-rebuild pacman hooks"
+echo "[6/11] Remove the auto-rebuild pacman hooks"
 rm -fv /etc/pacman.d/hooks/95-honor-zqcp-kernel-modules.hook \
        /etc/pacman.d/hooks/96-honor-zqcp-libfprint.hook \
        /usr/local/lib/honor-zqcp/rebuild.sh \
        /etc/honor-zqcp-autorebuild.conf
 rmdir --ignore-fail-on-non-empty /usr/local/lib/honor-zqcp 2>/dev/null || true
 
-echo "[7/10] Remove the HID-BPF mic-mute fixup and any legacy module overlays"
+echo "[7/11] Remove the HID-BPF mic-mute fixup and any legacy module overlays"
 systemctl disable --now honor-hid-bpf-reapply.service 2>/dev/null || true
 rm -fv /etc/systemd/system/honor-hid-bpf-reapply.service \
        /usr/local/lib/honor-zqcp/hid-bpf-reapply.sh
@@ -90,12 +90,12 @@ done
 rmdir --ignore-fail-on-non-empty "/usr/lib/modules/${KVER}/updates" 2>/dev/null || true
 depmod -a "$KVER"
 
-echo "[8/10] Remove the touchpad edge-gesture HID-BPF program"
+echo "[8/11] Remove the touchpad edge-gesture HID-BPF program"
 rm -fv /etc/udev-hid-bpf/honor-tops0102-edge.bpf.o \
        /etc/udev/rules.d/99-hid-bpf-honor-tops0102-edge.rules
 udevadm control --reload 2>/dev/null || true
 
-echo "[9/10] Revert the OLED backlight VBT"
+echo "[9/11] Revert the OLED backlight VBT"
 if [[ -x "$(dirname "${BASH_SOURCE[0]}")/patch/oled-backlight/uninstall.sh" ]]; then
     REGEN=0 bash "$(dirname "${BASH_SOURCE[0]}")/patch/oled-backlight/uninstall.sh" || \
         echo "    [warn] revert failed, see patch/oled-backlight/uninstall.sh"
@@ -107,7 +107,18 @@ else
     rm -fv /usr/lib/firmware/honor/zqc-p-vbt.bin
 fi
 
-echo "[10/10] Rebuild initramfs + bootloader config"
+echo "[10/11] Remove the Panther Lake CDCLK xe.ko overlay"
+if [[ -f "/usr/lib/modules/${KVER}/updates/xe.ko.zst" ]]; then
+    rm -fv "/usr/lib/modules/${KVER}/updates/xe.ko.zst"
+    rmdir --ignore-fail-on-non-empty "/usr/lib/modules/${KVER}/updates" 2>/dev/null || true
+    depmod -a "$KVER"
+    echo "    back to the packaged module: $(modinfo -k "$KVER" xe | grep -E '^filename:')"
+    echo "    the boot-time display glitch on 7.1.6+ comes back."
+else
+    echo "    not installed"
+fi
+
+echo "[11/11] Rebuild initramfs + bootloader config"
 if command -v limine-update >/dev/null; then
     limine-update
 else
