@@ -1,0 +1,173 @@
+name: Hardware dump for a new model
+description: You have a HONOR MagicBook this repository does not cover yet.
+title: "[model] HONOR MagicBook Pro ... (CODE)"
+labels: ["new model", "hardware dump"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you. This is the most useful thing anyone can send.
+
+        Everything below is **read-only**. Nothing here changes your machine.
+
+        **There is a script that does all of it in one go**, scrubs the DMI
+        serials, the product UUID, the hostname and the filesystem UUIDs from
+        what it collected, leaves out the `MSDM` ACPI table because that carries
+        your Windows licence key, and produces a ~200 KB archive you can attach
+        here:
+
+        ```sh
+        sudo bash tools/collect-hwinfo.sh
+        sudo bash tools/dump-acpi.sh
+        ```
+
+        If you would rather run the commands yourself, they are below.
+
+        **Do not paste `/sys/class/dmi/id/product_serial` or `board_serial`.**
+        They identify your laptop. None of the commands below read them.
+
+  - type: input
+    id: marketing_name
+    attributes:
+      label: What the machine is sold as
+      placeholder: "HONOR MagicBook Pro 14 2025, Ultra 5, touchscreen, 32 GB + 1 TB"
+    validations:
+      required: true
+
+  - type: textarea
+    id: identity
+    attributes:
+      label: 1. Identity, distribution and kernel
+      description: |
+        ```sh
+        for f in sys_vendor product_name product_version product_sku product_family \
+                 board_name board_version bios_version bios_date chassis_type; do
+            printf '%-16s %s\n' "$f" "$(cat /sys/class/dmi/id/$f 2>/dev/null)"
+        done
+        grep -E '^(NAME|VERSION)=' /etc/os-release
+        uname -r
+        lscpu | grep 'Model name'
+        ```
+      render: shell
+    validations:
+      required: true
+
+  - type: textarea
+    id: pci
+    attributes:
+      label: 2. PCI devices and drivers
+      description: |
+        ```sh
+        lspci -nnk
+        ```
+      render: shell
+    validations:
+      required: true
+
+  - type: textarea
+    id: audio_ssid
+    attributes:
+      label: 3. Audio subsystem id
+      description: |
+        This is the value an HD-audio codec quirk keys on, and it is different on
+        every model. If your machine has a discrete NVIDIA GPU it will print two
+        lines: the one that matters is the Intel device, not the GPU's own HDMI
+        audio function.
+        ```sh
+        for d in /sys/bus/pci/devices/*; do
+            case "$(cat "$d/class")" in
+              0x0401*|0x0403*) echo "$(basename "$d") $(cat "$d/subsystem_vendor"):$(cat "$d/subsystem_device")";;
+            esac
+        done
+        ```
+      render: shell
+    validations:
+      required: true
+
+  - type: textarea
+    id: usb_hid
+    attributes:
+      label: 4. USB, HID and input devices
+      description: |
+        Fingerprint reader, touchpad and touchscreen live here. The HID directory
+        name is `BUS:VID:PID`.
+        ```sh
+        lsusb
+        ls /sys/bus/hid/devices/
+        cat /proc/bus/input/devices
+        ```
+      render: shell
+    validations:
+      required: true
+
+  - type: textarea
+    id: display
+    attributes:
+      label: 5. Panel and backlight
+      description: |
+        ```sh
+        for b in /sys/class/backlight/*; do
+            echo "$(basename "$b") type=$(cat "$b/type") max=$(cat "$b/max_brightness")"
+        done
+        ls /sys/class/drm/
+        ```
+        If you know whether the panel is OLED or LCD, say so, it decides whether
+        the backlight fix applies at all.
+      render: shell
+    validations:
+      required: true
+
+  - type: textarea
+    id: acpi_list
+    attributes:
+      label: 6. ACPI tables present
+      description: |
+        ```sh
+        ls /sys/firmware/acpi/tables/
+        ```
+      render: shell
+    validations:
+      required: true
+
+  - type: textarea
+    id: symptoms
+    attributes:
+      label: 7. What is actually broken on your machine under Linux
+      description: |
+        Touchpad missing, no headset microphone, screen garbled at boot, fingerprint
+        reader not detected, and so on. Include the relevant part of
+        `journalctl -k -b -0`.
+      placeholder: "The touchpad and touchscreen do not appear at all. dmesg shows ..."
+    validations:
+      required: true
+
+  - type: markdown
+    attributes:
+      value: |
+        ## Files to attach
+
+        Drag these into the issue rather than pasting them.
+
+        ```sh
+        # ACPI tables, this is what the touchpad fix is derived from
+        sudo tar czf acpi-tables.tar.gz -C /sys/firmware/acpi tables
+
+        # kernel log of a full boot
+        journalctl -k -b -0 > dmesg.txt
+
+        # video BIOS table, only if the path exists (Intel graphics, debugfs mounted)
+        sudo cat /sys/kernel/debug/dri/0/i915_vbt > vbt.bin
+        ```
+
+        `acpi-tables.tar.gz` is around 150 KB. If `i915_vbt` does not exist, say so
+        and skip it.
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I did not include `product_serial` or `board_serial`.
+          required: true
+        - label: I understand that only one model here has been verified on real hardware, and that a fix for mine may take a while or may not arrive at all.
+          required: true

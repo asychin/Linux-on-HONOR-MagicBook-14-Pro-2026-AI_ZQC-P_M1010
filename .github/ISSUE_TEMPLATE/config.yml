@@ -1,0 +1,11 @@
+blank_issues_enabled: true
+contact_links:
+  - name: What is known about each model
+    url: https://github.com/rs0x29a/Linux-on-HONOR-MagicBook-14-Pro-2026-AI_ZQC-P_M1010/blob/main/docs/hardware/README.md
+    about: One page per machine, what works, what does not, and where every claim came from.
+  - name: Testing on a model nobody here owns
+    url: https://github.com/rs0x29a/Linux-on-HONOR-MagicBook-14-Pro-2026-AI_ZQC-P_M1010/blob/main/docs/TESTING.md
+    about: What to try and what to report if you have one of the models that is not verified.
+  - name: Contributing guide
+    url: https://github.com/rs0x29a/Linux-on-HONOR-MagicBook-14-Pro-2026-AI_ZQC-P_M1010/blob/main/CONTRIBUTING.md
+    about: Conventions for installers, how fixes are laid out, and how to send a patch.

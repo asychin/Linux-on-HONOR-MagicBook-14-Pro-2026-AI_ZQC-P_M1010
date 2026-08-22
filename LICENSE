@@ -20,6 +20,14 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
-The contents of `win11_dump/` and `reference/SSDT27_orig.*` are unmodified
-factory data extracted from the device and are NOT covered by this license;
-they are included as documentation under the original vendor's terms.
+The contents of `dump/` are unmodified factory data extracted from the device
+— the machine's own ACPI tables, the PnP device list and a scoped registry
+extract from the factory OS — and are NOT covered by this license; they are
+included as documentation under the original vendor's terms. The same applies
+to `patch/acpi-override/SSDT27_TPD0.aml` and `.dsl`, which are that factory
+table with one statement moved.
+
+Third-party work carried here keeps its own licence and authorship: the patches
+under `patch/fingerprint/sensors/` are other people's, each with its origin
+recorded in the `recipe.conf` beside it; `patch/fan/honor-ec-sensors.c` and
+`patch/keyboard-atkbd/*.patch` are GPL-2.0, as their headers state.

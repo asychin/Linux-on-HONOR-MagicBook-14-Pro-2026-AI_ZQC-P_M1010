@@ -1,0 +1,105 @@
+name: Bug report
+description: Something in this repository does not work, or breaks after an update.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please do not paste `product_serial` or `board_serial`. They identify your machine.
+
+  - type: input
+    id: model
+    attributes:
+      label: Machine
+      description: "Output of: `cat /sys/class/dmi/id/{sys_vendor,product_name,board_version,bios_version}`"
+      placeholder: "HONOR / ZQC-P / M1010 / 1.10"
+    validations:
+      required: true
+
+  - type: input
+    id: distro
+    attributes:
+      label: Distribution and kernel
+      description: "Distribution name and version, plus `uname -r`."
+      placeholder: "CachyOS, 7.1.8-1-cachyos"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Which fix
+      options:
+        - acpi-override (touchpad, touchscreen, keyboard)
+        - oled-backlight
+        - cdclk-ptl (garbled screen at boot)
+        - touchpad-edge (left-edge brightness gesture)
+        - micmute (phantom KEY_MICMUTE)
+        - headset-mic (3.5 mm jack microphone)
+        - sof-audio
+        - fan (RPM readout)
+        - fingerprint
+        - battery (charge limit)
+        - hotkeys (Fn keys missing from the keymap)
+        - hotkey-actions (performance mode, camera toggle)
+        - auto-rebuild (package-manager hooks)
+        - keyboard-atkbd
+        - device detection picked the wrong profile, or no profile
+        - apply_patch.sh or uninstall_patch.sh itself
+        - something else / not sure
+    validations:
+      required: true
+
+  - type: dropdown
+    id: how
+    attributes:
+      label: How was it installed
+      options:
+        - "apply_patch.sh"
+        - "the fix's own install.sh"
+        - "not installed, the problem is with the repository itself"
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected, and what happened instead
+      description: Include the exact commands you ran.
+    validations:
+      required: true
+
+  - type: textarea
+    id: output
+    attributes:
+      label: Installer output
+      description: The full output of the script, not just the last line.
+      render: shell
+
+  - type: textarea
+    id: detection
+    attributes:
+      label: What the installer detected
+      description: |
+        Read-only, and it says which profile matched and why.
+        ```sh
+        bash -c 'source lib/profile.sh; source lib/detect.sh; detect_read_dmi; detect_describe; detect_profile devices && echo "profile: $DETECT_PROFILE"'
+        ```
+      render: shell
+
+  - type: textarea
+    id: journal
+    attributes:
+      label: Kernel log
+      description: "`journalctl -k -b -0` around the failure. If the machine did not boot, use `-b -1`."
+      render: shell
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I am not pasting my machine's serial numbers.
+          required: true
+        - label: I checked whether an existing issue already covers this.
+          required: true
