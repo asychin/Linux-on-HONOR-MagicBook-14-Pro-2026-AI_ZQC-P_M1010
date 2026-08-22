@@ -2880,7 +2880,7 @@ False
 Device        : Bluetooth
 Class         : SoftwareDevice
 Manufacturer  : Майкрософт
-InstanceId    : SWD\RADIO\BLUETOOTH_644A7DABCE1B
+InstanceId    : SWD\RADIO\BLUETOOTH_<redacted>
 --------------------------------------------------
 PROPERTIES:
 
@@ -3062,7 +3062,7 @@ Data :
 [DEVPKEY_Device_InstanceId]
 Type : 
 Data :
-SWD\RADIO\BLUETOOTH_644A7DABCE1B
+SWD\RADIO\BLUETOOTH_<redacted>
 
 [DEVPKEY_Device_IsPresent]
 Type : 
@@ -9775,7 +9775,7 @@ Data :
 [DEVPKEY_Device_BusRelations]
 Type : 
 Data :
-USB\VID_27C6&PID_6F94\UID579A0DC6_XXXX_MOC_B0 USB\VID_3277&PID_00DE\0001 USB\VID_046D&PID_C08B\176F31673830
+USB\VID_27C6&PID_6F94\UID<redacted>_XXXX_MOC_B0 USB\VID_3277&PID_00DE\0001 USB\VID_046D&PID_C08B\<redacted>
 
 [DEVPKEY_Device_BusTypeGuid]
 Type : 
@@ -9790,7 +9790,7 @@ Data :
 [DEVPKEY_Device_Children]
 Type : 
 Data :
-USB\VID_27C6&PID_6F94\UID579A0DC6_XXXX_MOC_B0 USB\VID_3277&PID_00DE\0001 USB\VID_046D&PID_C08B\176F31673830
+USB\VID_27C6&PID_6F94\UID<redacted>_XXXX_MOC_B0 USB\VID_3277&PID_00DE\0001 USB\VID_046D&PID_C08B\<redacted>
 
 [DEVPKEY_Device_Class]
 Type : 
@@ -15044,7 +15044,7 @@ Voice Clarity
 Device        : Составное USB устройство
 Class         : USB
 Manufacturer  : (Стандартный USB хост-контроллер)
-InstanceId    : USB\VID_046D&PID_C08B\176F31673830
+InstanceId    : USB\VID_046D&PID_C08B\<redacted>
 --------------------------------------------------
 PROPERTIES:
 
@@ -15256,7 +15256,7 @@ Data :
 [DEVPKEY_Device_InstanceId]
 Type : 
 Data :
-USB\VID_046D&PID_C08B\176F31673830
+USB\VID_046D&PID_C08B\<redacted>
 
 [DEVPKEY_Device_IsPresent]
 Type : 
@@ -15351,7 +15351,7 @@ usbccgp
 [DEVPKEY_Device_Siblings]
 Type : 
 Data :
-USB\VID_27C6&PID_6F94\UID579A0DC6_XXXX_MOC_B0 USB\VID_3277&PID_00DE\0001
+USB\VID_27C6&PID_6F94\UID<redacted>_XXXX_MOC_B0 USB\VID_3277&PID_00DE\0001
 
 [DEVPKEY_Device_Stack]
 Type : 
@@ -21016,7 +21016,7 @@ usbccgp
 [DEVPKEY_Device_Siblings]
 Type : 
 Data :
-USB\VID_27C6&PID_6F94\UID579A0DC6_XXXX_MOC_B0 USB\VID_046D&PID_C08B\176F31673830
+USB\VID_27C6&PID_6F94\UID<redacted>_XXXX_MOC_B0 USB\VID_046D&PID_C08B\<redacted>
 
 [DEVPKEY_Device_Stack]
 Type : 
@@ -49846,7 +49846,7 @@ Data :
 Device        : Goodix Moc Fingerprint
 Class         : Biometric
 Manufacturer  : Goodix
-InstanceId    : USB\VID_27C6&PID_6F94\UID579A0DC6_XXXX_MOC_B0
+InstanceId    : USB\VID_27C6&PID_6F94\UID<redacted>_XXXX_MOC_B0
 --------------------------------------------------
 PROPERTIES:
 
@@ -50078,7 +50078,7 @@ Data :
 [DEVPKEY_Device_InstanceId]
 Type : 
 Data :
-USB\VID_27C6&PID_6F94\UID579A0DC6_XXXX_MOC_B0
+USB\VID_27C6&PID_6F94\UID<redacted>_XXXX_MOC_B0
 
 [DEVPKEY_Device_IsPresent]
 Type : 
@@ -50183,7 +50183,7 @@ WUDFRd
 [DEVPKEY_Device_Siblings]
 Type : 
 Data :
-USB\VID_3277&PID_00DE\0001 USB\VID_046D&PID_C08B\176F31673830
+USB\VID_3277&PID_00DE\0001 USB\VID_046D&PID_C08B\<redacted>
 
 [DEVPKEY_Device_Stack]
 Type : 
@@ -51141,7 +51141,7 @@ Data :
 [{83DA6326-97A6-4088-9453-A1923F573B29} 10]
 Type : 
 Data :
-USB\VID_046D&PID_C08B\176F31673830
+USB\VID_046D&PID_C08B\<redacted>
 
 [{83DA6326-97A6-4088-9453-A1923F573B29} 15]
 Type : 
@@ -51371,7 +51371,7 @@ USB\Class_03
 [DEVPKEY_Device_Parent]
 Type : 
 Data :
-USB\VID_046D&PID_C08B\176F31673830
+USB\VID_046D&PID_C08B\<redacted>
 
 [DEVPKEY_Device_PDOName]
 Type : 
@@ -53095,7 +53095,7 @@ Data :
 [{83DA6326-97A6-4088-9453-A1923F573B29} 10]
 Type : 
 Data :
-USB\VID_046D&PID_C08B\176F31673830
+USB\VID_046D&PID_C08B\<redacted>
 
 [{83DA6326-97A6-4088-9453-A1923F573B29} 15]
 Type : 
@@ -53325,7 +53325,7 @@ USB\Class_03&SubClass_01
 [DEVPKEY_Device_Parent]
 Type : 
 Data :
-USB\VID_046D&PID_C08B\176F31673830
+USB\VID_046D&PID_C08B\<redacted>
 
 [DEVPKEY_Device_PDOName]
 Type : 
