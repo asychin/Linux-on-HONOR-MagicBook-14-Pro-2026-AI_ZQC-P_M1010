@@ -5,7 +5,7 @@
 | Problem | the display driver forces a full CDCLK PLL restart while the panel is lit |
 | Symptom | corrupted image during boot, `*ERROR* CPU pipe A FIFO underrun` |
 | Introduced by | `2ee8dbd880b1`, stable backport `1e9b961f9f45`, first shipped in **7.1.6** |
-| Fixed upstream | patch written, **not merged anywhere** as of 2026-08-19 |
+| Fixed upstream | **merged into `drm-intel-next` 2026-08-21**, so expect it in Linux **7.3**, then a 7.1.y/7.2.y backport |
 | Fix here | rebuild `xe.ko` with the upstream patch applied |
 
 ```sh
@@ -173,6 +173,35 @@ sudo limine-mkinitcpio
 A new kernel version gets a fresh module directory with no `updates/` entry,
 so the fix is gone and the next boot is back to the stock behaviour. Rerun
 `install.sh`. This one is deliberately **not** wired into the
-[`auto-rebuild`](../auto-rebuild/) pacman hooks: it would mean a 260 MB
+[`auto-rebuild`](../auto-rebuild/) hooks: it would mean a 260 MB
 download and a multi-minute compile inside every kernel upgrade transaction,
 and the whole thing becomes obsolete the moment the fix lands upstream.
+
+---
+
+## Upstream status
+
+Ville Syrjälä's fix, written 2026-07-17, was **committed to `drm-intel-next` on
+2026-08-21**:
+[`1786d26887817a779641d3a093c66ac91382113b`](https://gitlab.freedesktop.org/drm/i915/kernel/-/commit/1786d26887817a779641d3a093c66ac91382113b),
+"drm/i915/cdclk: Avoid spurious cdclk sanitization on PTL+", with
+`Fixes: 3f9de66f8acb`, `Cc: stable@vger.kernel.org` and a `Closes:` trailer
+pointing at [drm/xe work item 8550](https://gitlab.freedesktop.org/drm/xe/kernel/-/work_items/8550),
+which was closed the same day.
+
+**When this directory can be deleted.** Because it went to `drm-intel-next`
+rather than `drm-intel-fixes`, it misses 7.2 entirely and rides the next merge
+window into **Linux 7.3**. The `Cc: stable` trailer means the stable maintainers
+should then backport it to 7.1.y and 7.2.y — after it reaches Linus's tree, not
+before. So: nothing to do on 7.1 or 7.2 today, and on 7.3 this becomes a no-op.
+
+**The upstream fix has a different shape from the one carried here.** This
+repository wraps the two offending lines in `if (DISPLAY_VER(display) < 30)`.
+Upstream introduced a helper instead — `if (has_cd2x_pipe_select(display))` —
+and an immediately following commit,
+[`1ceb1ef81c32`](https://gitlab.freedesktop.org/drm/i915/kernel/-/commit/1ceb1ef81c32e83d99a52225d6437832316654a0),
+consolidates the rest of the driver onto it. The two are equivalent in effect on
+Panther Lake, but the eventual stable backport will **not** be textually
+identical to the patch in this directory. When your kernel picks it up, the
+installer here detects the fix is already present and skips; do not try to
+reconcile the two by hand.

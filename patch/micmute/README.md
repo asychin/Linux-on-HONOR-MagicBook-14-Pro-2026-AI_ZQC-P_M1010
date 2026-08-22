@@ -170,3 +170,45 @@ flicker, so the count conflated deliberate presses with spurious events. The
 `_Q14 → WMI 0x287 → KEY_MICMUTE` chain is real and is how the key works; the EC
 was never shown to fire it unprompted. The filter has been removed from this
 repository.
+
+---
+
+## Which machines this device is on
+
+`2808:5662` is not unique to the reference machine. It is confirmed on four
+HONOR models, and all four profiles list this fix:
+
+| Model | Evidence |
+|---|---|
+| `ZQC-P` | measured here, with the symptom |
+| `FMB-P` | colorcube issue #5, same symptom |
+| `MRA-XXX` | [probe 35a02e8c69](https://linux-hardware.org/?probe=35a02e8c69), same `FTSC1000` ACPI name and ids |
+| `MRB-XXX` | [probe 69946861f1](https://linux-hardware.org/?probe=69946861f1&log=input_devices), the same |
+
+Only the first two have the symptom reported. The other two are listed because
+the fix binds to that one HID id and rewrites that one report descriptor: on a
+unit without the part it matches nothing and does nothing, so listing it costs
+nothing and being wrong is cheap. Ten `FMB-P` hardware probes show no
+touchscreen at all, so that model evidently ships in more than one
+configuration, which is the same argument from the other direction.
+
+If you have an Art 14 and the microphone does **not** mute itself, say so and
+it comes off those two profiles.
+
+**It does not cover the other phantom-key source on `FMB-P`.** That machine has
+two: this touchscreen, and separately a Goodix `27c6:01e0` touchpad whose
+`FF00:0001` and `FF01:0001` vendor collections `hid-input` also maps into a
+phantom `UNKNOWN` device (colorcube issue #3, kernel bugzilla 220741). Anybody
+extending this fix to that part needs a second program bound to that id — and
+should note it is the mirror image of
+[`../touchpad-edge/`](../touchpad-edge/), where the same vendor collections on
+the same vendor's silicon carry a gesture worth keeping rather than noise worth
+dropping.
+
+## This would be the first HONOR program upstream
+
+`drivers/hid/bpf/progs/` in mainline holds thirty vendor programs — Huion,
+XPPen, Wacom, TUXEDO, Rapoo, Microsoft, Logitech and others — plus
+`Generic__touchpad.bpf.c`, and **nothing for HONOR**. Both HID-BPF programs in
+this repository, this one and the touchpad-edge translator, are exactly the
+shape that directory takes. Neither has been submitted.

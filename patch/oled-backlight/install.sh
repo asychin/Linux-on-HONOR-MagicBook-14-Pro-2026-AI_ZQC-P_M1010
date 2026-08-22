@@ -45,32 +45,50 @@ fi
 # showed the colour cast and the blotches, 3.98% was clean, so the threshold
 # sits between them and this leaves two steps of margin. Panels vary, so run
 # measure-floor.sh and override if yours disagrees.
-VBT_MIN="${VBT_MIN:-12}"
+# The value itself now lives in the device profile as param_backlight_min; see
+# the check further down, which also accepts a VBT_MIN override.
 
 SRC_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FW_DIR=/usr/lib/firmware/honor
 FW_NAME=zqc-p-vbt.bin
 FW_PATH="${FW_DIR}/${FW_NAME}"
 FW_PARAM="honor/${FW_NAME}"
-STATE_DIR=/var/lib/honor-zqcp
+STATE_DIR=/var/lib/honor
 FACTORY="${STATE_DIR}/vbt-factory.bin"
 STAMP="${STATE_DIR}/oled-backlight.stamp"
 TS=$(date +%Y%m%d-%H%M%S)
-BACKUP="/root/honor-zqcp-oled-backlight-backup-${TS}"
+BACKUP="/root/honor-oled-backlight-backup-${TS}"
 
 log()  { printf '\033[1;32m==>\033[0m %s\n' "$*"; }
 warn() { printf '\033[1;33m==>\033[0m %s\n' "$*" >&2; }
 die()  { printf '\033[1;31m==>\033[0m %s\n' "$*" >&2; exit 1; }
 
-# --- 1. DMI gate --------------------------------------------------------------
-VENDOR=$(cat /sys/class/dmi/id/sys_vendor 2>/dev/null || echo "")
-PRODUCT=$(cat /sys/class/dmi/id/product_name 2>/dev/null || echo "")
+# --- 1. is this fix meant for this machine ------------------------------------
+# Tier B: the blob is read off this machine, but the floor written into it was
+# measured by eye on one panel, so it needs a verified profile.
+source "${SRC_DIR}/../../lib/gate.sh"
+honor_gate oled-backlight
+
+# vbt-factory.bin under the old path is the only copy of this machine's
+# untouched VBT, so it is moved rather than dropped.
+legacy_move /var/lib/honor-zqcp "$STATE_DIR"
+legacy_drop /etc/udev/rules.d/99-honor-zqcp-backlight-nonzero.rules
+
 BIOS=$(cat /sys/class/dmi/id/bios_version 2>/dev/null || echo "unknown")
-if [[ "$VENDOR" != "HONOR" || "$PRODUCT" != "ZQC-P" ]]; then
-    die "This machine reports '$VENDOR / $PRODUCT', not 'HONOR / ZQC-P'.
-    The panel and its VBT layout are model-specific — refusing to install."
+log "profile $(profile_get model), BIOS $BIOS"
+
+if [[ "$(profile_get panel)" == "lcd" ]]; then
+    warn "$(profile_get model) has an LCD panel. Raising the firmware floor is
+    aimed at OLED panels that cannot render very low duty evenly; on an LCD
+    this most likely just costs you the bottom of the range."
 fi
-log "DMI matches HONOR ZQC-P, BIOS $BIOS"
+
+# The floor comes from the profile unless the caller overrides it, which is
+# what somebody measuring their own panel will want to do.
+VBT_MIN="$(gate_param param_backlight_min VBT_MIN)" || die \
+    "$(profile_get model) has no param_backlight_min and none was given.
+    Run measure-floor.sh on this panel, then either pass VBT_MIN=<n> or write
+    it into devices/$(basename "${DETECT_PROFILE:-${HONOR_PROFILE:-?}}")."
 
 [[ "$VBT_MIN" =~ ^[0-9]+$ ]] || die "VBT_MIN must be a number, got '$VBT_MIN'"
 (( VBT_MIN >= 1 && VBT_MIN <= 64 )) || \
@@ -164,9 +182,9 @@ echo "    $(grep -E '^FILES=' /etc/mkinitcpio.conf)"
 # The panel power decision is made on the user value before scaling, so the VBT
 # floor cannot cover it. Opt-in, because it also overrides a deliberate blank
 # through this interface; bl_power is the proper way to do that.
-GUARD_RULE=/etc/udev/rules.d/99-honor-zqcp-backlight-nonzero.rules
+GUARD_RULE=/etc/udev/rules.d/99-honor-backlight-nonzero.rules
 if [[ "${GUARD_ZERO:-0}" == "1" ]]; then
-    install -Dm644 "${SRC_DIR}/99-honor-zqcp-backlight-nonzero.rules" "$GUARD_RULE"
+    install -Dm644 "${SRC_DIR}/99-honor-backlight-nonzero.rules" "$GUARD_RULE"
     udevadm control --reload
     log "installed the zero guard ($GUARD_RULE)"
 elif [[ -f "$GUARD_RULE" ]]; then
@@ -182,9 +200,12 @@ if [[ -f /etc/default/limine ]]; then
         sed -i "s#\b\(xe\|i915\)\.vbt_firmware=[^ \"]*#${CMDLINE_ARG}#" /etc/default/limine
         log "updated the existing vbt_firmware= on the cmdline"
     else
-        sed -i "s|^\(KERNEL_CMDLINE\[default\]+=\"[^\"]*\)\"$|\1 ${CMDLINE_ARG}\"|" \
-            /etc/default/limine
-        log "appended $CMDLINE_ARG to the Limine cmdline"
+        # distro_cmdline_add knows every shape this file comes in, including the
+        # plain KERNEL_CMDLINE[default]= and per-kernel keys, and refuses rather
+        # than editing one it does not recognise. The sed that used to be here
+        # only matched the += form and reported success either way.
+        distro_cmdline_add "$CMDLINE_ARG" \
+            || warn "add $CMDLINE_ARG to your kernel command line yourself"
     fi
     echo "    $(grep -E '^KERNEL_CMDLINE\[default\]' /etc/default/limine)"
 else
@@ -197,7 +218,7 @@ fi
 # calls us with REGEN=0 to avoid rebuilding the initramfs twice.
 if (( ${REGEN:-1} )); then
     log "regenerating the initramfs"
-    mkinitcpio -P
+    distro_initramfs_rebuild || warn "rebuild the initramfs yourself"
     if command -v limine-update >/dev/null; then
         log "updating the Limine config"
         limine-update

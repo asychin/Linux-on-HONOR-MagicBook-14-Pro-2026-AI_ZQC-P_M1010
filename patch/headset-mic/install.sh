@@ -40,6 +40,43 @@ cleanup() { rm -rf "$WORK"; }
 trap cleanup EXIT
 
 req() { command -v "$1" >/dev/null || { echo "missing required tool: $1" >&2; exit 1; }; }
+# Tier B: the subsystem id and the choice of fixup are model specific, and
+# getting either wrong reconfigures the codec pins on real hardware.
+source "${SCRIPT_DIR}/../../lib/gate.sh"
+honor_gate headset-mic
+
+fatal() { echo "[fatal] $*" >&2; exit 1; }
+
+AUDIO_SSID="$(gate_param audio_ssid)" || fatal \
+"$(profile_get model) does not record audio_ssid. Read it with:
+          for d in /sys/bus/pci/devices/*; do
+              case \"\$(cat \$d/class)\" in 0x0401*|0x0403*)
+                  echo \"\$(cat \$d/subsystem_vendor):\$(cat \$d/subsystem_device)\";;
+              esac
+          done"
+
+FIXUP_NAME="$(gate_param param_audio_fixup)" || fatal \
+"$(profile_get model) does not record param_audio_fixup, so there is no way to
+        know which alc269.c fixup this board needs. That has to be worked out on
+        the machine itself."
+
+SSID_VEN="0x${AUDIO_SSID%%:*}"
+SSID_DEV="0x${AUDIO_SSID##*:}"
+QUIRK_DESC="HONOR $(profile_get model)"
+
+# The fixup body further down is C written for one board: pin 0x19
+# reconfigured and chained into the headset-mode lifecycle. There is no generic
+# machinery to synthesise another one, so a model needing a different fixup
+# needs its body added here first.
+if [[ "$FIXUP_NAME" != "ALC256_FIXUP_HONOR_ZQC_P_M1010_MIC" ]]; then
+    fatal "the profile asks for fixup '$FIXUP_NAME', but this installer only
+        knows how to emit ALC256_FIXUP_HONOR_ZQC_P_M1010_MIC. Add the body for
+        '$FIXUP_NAME' to patch/headset-mic/install.sh before installing."
+fi
+echo "[ok] codec ${SSID_VEN}:${SSID_DEV}, fixup ${FIXUP_NAME}"
+
+legacy_drop /etc/wireplumber/wireplumber.conf.d/51-honor-zqcp-mic-priority.conf
+
 req curl
 req zstdcat
 req zstd
@@ -66,7 +103,7 @@ echo "[*] target = ${KO_OVERLAY}"
 # recording device, and it breaks the mic-mute LED, because the kernel's
 # control-LED group only tracks the DMIC control. Rank the jack input below
 # the array; it stays fully usable, it is simply no longer the default.
-WP_RULE="${SCRIPT_DIR}/51-honor-zqcp-mic-priority.conf"
+WP_RULE="${SCRIPT_DIR}/51-honor-mic-priority.conf"
 WP_DIR="/etc/wireplumber/wireplumber.conf.d"
 if [[ -f "$WP_RULE" ]]; then
     echo "[*] installing ${WP_DIR}/$(basename "$WP_RULE")"
@@ -139,7 +176,7 @@ if [[ -f "$BACKUP" ]] && has_quirk "$KO_INTREE"; then
 fi
 
 if has_quirk "$KO_INTREE"; then
-    echo "[ok] in-tree alc269 already contains the ZQC-P quirk — nothing to do."
+    echo "[ok] in-tree alc269 already contains the $(profile_get model) quirk — nothing to do."
     if [[ -f "$KO_OVERLAY" ]]; then
         echo "[*] removing redundant overlay $KO_OVERLAY"
         rm -f "$KO_OVERLAY"
@@ -231,17 +268,23 @@ sed -i 's|#include "../generic.h"|#include "generic.h"|g; s|#include "../side-co
 # After this fixup the headset mic works out of the box across cold
 # boot, warm reboot and suspend/resume cycles, with no need for any
 # userspace daemon or hda-verb tricks.
-if grep -q 'ALC256_FIXUP_HONOR_ZQC_P_M1010_MIC' "${WORK}/alc269.c"; then
-    echo "[ok] upstream already has the ZQC-P fixup — building unmodified."
+if grep -q "$FIXUP_NAME" "${WORK}/alc269.c"; then
+    echo "[ok] upstream already has the $(profile_get model) fixup — building unmodified."
 else
-    python3 <<PYEOF
+    FIXUP_NAME="$FIXUP_NAME" SSID_VEN="$SSID_VEN" SSID_DEV="$SSID_DEV" \
+    QUIRK_DESC="$QUIRK_DESC" python3 <<PYEOF
+import os
+fixup_name = os.environ["FIXUP_NAME"]
+ssid_ven   = os.environ["SSID_VEN"]
+ssid_dev   = os.environ["SSID_DEV"]
+quirk_desc = os.environ["QUIRK_DESC"]
 src_path = "${WORK}/alc269.c"
 with open(src_path) as f:
     src = f.read()
 
 # 1. Add new enum value right after ALC2XX_FIXUP_HEADSET_MIC.
 enum_marker = "\tALC2XX_FIXUP_HEADSET_MIC,\n"
-enum_add    = "\tALC256_FIXUP_HONOR_ZQC_P_M1010_MIC,\n"
+enum_add    = "\t%s,\n" % fixup_name
 if enum_marker not in src:
     raise SystemExit("could not find ALC2XX_FIXUP_HEADSET_MIC enum entry")
 src = src.replace(enum_marker, enum_marker + enum_add, 1)
@@ -259,7 +302,7 @@ src = src.replace(enum_marker, enum_marker + enum_add, 1)
 #    to solve that in alc269.c.
 body_marker = "\t[ALC2XX_FIXUP_HEADSET_MIC] = {\n\t\t.type = HDA_FIXUP_FUNC,\n\t\t.v.func = alc2xx_fixup_headset_mic,\n\t},\n"
 body_add = (
-    "\t[ALC256_FIXUP_HONOR_ZQC_P_M1010_MIC] = {\n"
+    "\t[%s] = {\n" % fixup_name +
     "\t\t.type = HDA_FIXUP_PINS,\n"
     "\t\t.v.pins = (const struct hda_pintbl[]) {\n"
     "\t\t\t{ 0x19, 0x01a1913c }, /* use as headset mic, without its own jack detect */\n"
@@ -275,7 +318,7 @@ src = src.replace(body_marker, body_marker + body_add, 1)
 
 # 4. Add SND_PCI_QUIRK referring to the new fixup.
 quirk_marker = '\tSND_PCI_QUIRK(0x1ee7, 0x2078, "HONOR BRB-X M1010", ALC2XX_FIXUP_HEADSET_MIC),\n'
-quirk_add    = '\tSND_PCI_QUIRK(0x1ee7, 0x209d, "HONOR ZQC-P M1010", ALC256_FIXUP_HONOR_ZQC_P_M1010_MIC),\n'
+quirk_add    = '\tSND_PCI_QUIRK(%s, %s, "%s", %s),\n' % (ssid_ven, ssid_dev, quirk_desc, fixup_name)
 if quirk_marker not in src:
     raise SystemExit("could not find HONOR BRB-X M1010 quirk to anchor on")
 src = src.replace(quirk_marker, quirk_marker + quirk_add, 1)
@@ -283,12 +326,12 @@ src = src.replace(quirk_marker, quirk_marker + quirk_add, 1)
 with open(src_path, "w") as f:
     f.write(src)
 PYEOF
-    if ! grep -q '0x1ee7, 0x209d' "${WORK}/alc269.c"; then
+    if ! grep -q "${SSID_VEN}, ${SSID_DEV}" "${WORK}/alc269.c"; then
         echo "[fatal] could not insert the SND_PCI_QUIRK line — upstream layout changed" >&2
         echo "        review patch/headset-mic/alc269-honor-zqc-p-m1010.patch and adjust." >&2
         exit 1
     fi
-    echo "[ok] inserted SND_PCI_QUIRK for 1ee7:209d HONOR ZQC-P M1010"
+    echo "[ok] inserted SND_PCI_QUIRK for ${AUDIO_SSID} ${QUIRK_DESC}"
 fi
 
 # KDIR is baked in from $BUILD_DIR rather than derived from `uname -r`, so a
@@ -328,7 +371,7 @@ remove_legacy_jack_service
 
 echo
 echo "════════════════════════════════════════════════════════════════════"
-echo "  ALC256 ZQC-P quirk installed."
+echo "  ALC256 $(profile_get model) quirk installed."
 echo
 echo "  After a fresh boot, the analog 3.5mm-jack headset microphone"
 echo "  will appear as 'HiFi__Headset__source' in PipeWire and as the"

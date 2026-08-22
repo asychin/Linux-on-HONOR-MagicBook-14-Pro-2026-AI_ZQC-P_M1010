@@ -16,7 +16,7 @@ fi
 
 FW_DIR=/usr/lib/firmware/honor
 FW_PATH="${FW_DIR}/zqc-p-vbt.bin"
-STATE_DIR=/var/lib/honor-zqcp
+STATE_DIR=/var/lib/honor
 PURGE="${PURGE:-0}"
 
 log() { printf '\033[1;32m==>\033[0m %s\n' "$*"; }
@@ -35,7 +35,7 @@ sed -i "/^FILES=/ { s#${FW_PATH} *##; s#^FILES=( *)#FILES=()#; }" /etc/mkinitcpi
 echo "    $(grep -E '^FILES=' /etc/mkinitcpio.conf)"
 
 log "[3/5] Remove the installed firmware blob and the optional zero guard"
-rm -fv /etc/udev/rules.d/99-honor-zqcp-backlight-nonzero.rules
+rm -fv /etc/udev/rules.d/99-honor-backlight-nonzero.rules
 udevadm control --reload 2>/dev/null || true
 rm -fv "$FW_PATH"
 rmdir --ignore-fail-on-non-empty "$FW_DIR" 2>/dev/null || true
@@ -50,7 +50,8 @@ fi
 # uninstall_patch.sh regenerates once at the end, so it calls us with REGEN=0.
 if (( ${REGEN:-1} )); then
     log "[4/5] Regenerate the initramfs"
-    mkinitcpio -P
+    source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/lib/distro.sh"
+    distro_initramfs_rebuild || echo "    rebuild the initramfs yourself"
 
     log "[5/5] Update the bootloader config"
     if command -v limine-update >/dev/null; then

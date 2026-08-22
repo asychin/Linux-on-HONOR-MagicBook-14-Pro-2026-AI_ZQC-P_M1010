@@ -1,4 +1,4 @@
-obj-m += honor-zqcp-hwmon.o
+obj-m += honor-ec-sensors.o
 
 KVER ?= $(shell uname -r)
 KDIR ?= /lib/modules/$(KVER)/build

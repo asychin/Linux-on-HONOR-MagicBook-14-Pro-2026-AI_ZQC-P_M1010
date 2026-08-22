@@ -35,13 +35,31 @@ die()  { printf '\033[1;31m==>\033[0m %s\n' "$*" >&2; exit 1; }
 # --- 1. prerequisites ---------------------------------------------------------
 [[ -f "$SRC" ]] || die "source not found: $SRC"
 
-for t in clang bpftool curl udev-hid-bpf udevadm; do
-    command -v "$t" >/dev/null || die "missing required tool: $t
-    Arch/CachyOS: pacman -S clang bpf udev-hid-bpf"
-done
+# Tier A: the program is bound to one HID id, so on a machine without that
+# touchpad udev-hid-bpf simply never attaches it.
+source "${SCRIPT_DIR}/../../lib/gate.sh"
+honor_gate touchpad-edge
 
-grep -q "^CONFIG_HID_BPF=y" <(zcat /proc/config.gz 2>/dev/null) \
-    || warn "CONFIG_HID_BPF=y not confirmed in /proc/config.gz - continuing anyway."
+HID_ID="$(gate_param touchpad_hid)" || die \
+    "$(profile_get model) does not record touchpad_hid.
+    Find it in 'ls /sys/bus/hid/devices/' and add it to the profile."
+HID_VID="0x${HID_ID%%:*}"
+HID_PID="0x${HID_ID##*:}"
+log "touchpad ${HID_VID}:${HID_PID} (from the $(profile_get model) profile)"
+
+MISSING=()
+for t in clang bpftool curl udev-hid-bpf udevadm; do
+    command -v "$t" >/dev/null || MISSING+=("$t")
+done
+if (( ${#MISSING[@]} )); then
+    die "missing required tool(s): ${MISSING[*]}
+    $(distro_pkg_hint "${MISSING[@]}")
+    udev-hid-bpf is not packaged everywhere; if your distribution has no such
+    package, build it from https://gitlab.freedesktop.org/libevdev/udev-hid-bpf"
+fi
+
+distro_kernel_config_has CONFIG_HID_BPF=y \
+    || warn "CONFIG_HID_BPF=y not confirmed in this kernel's config - continuing anyway."
 
 [[ -r /sys/kernel/btf/vmlinux ]] \
     || die "/sys/kernel/btf/vmlinux missing - the kernel needs CONFIG_DEBUG_INFO_BTF=y."
@@ -69,6 +87,7 @@ bpftool btf dump file /sys/kernel/btf/vmlinux format c > "${WORK}/vmlinux.h"
 log "building ${OBJ_NAME}"
 cp "$SRC" "${WORK}/"
 clang -O2 -g -target bpf -mcpu=v3 -D__TARGET_ARCH_x86 \
+      -DVID_GOODIX="${HID_VID}" -DPID_TOPS0102="${HID_PID}" \
       -I"$WORK" -Wno-missing-declarations \
       -c "${WORK}/$(basename "$SRC")" -o "${WORK}/${OBJ_NAME}" 2>&1 \
     | grep -vE "does not declare anything|^ *[0-9]+ \||^ +\^|In file included from|warnings? generated" \

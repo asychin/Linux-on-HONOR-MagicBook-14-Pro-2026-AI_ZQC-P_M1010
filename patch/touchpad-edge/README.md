@@ -1,5 +1,21 @@
 # Touchpad edge slide, brightness
 
+> **Not every model has this touchpad.** The gesture is a vendor HID report
+> from the Goodix device that reports `27c6:0f9a`, and this fix is bound to
+> that id. `touchpad_hid` in the device profile is what decides, and it is the
+> only thing that should: HONOR has fitted at least four different touchpads
+> across this family, and three of them are not this one.
+>
+> In particular, **do not infer the part from the ACPI `_HID`.** `TOPS0102` is
+> a slot name. `XWC-P` and `MRA-XXX` both use it, and on `MRA-XXX` the chip
+> behind it is `35cc:0104`, an unrelated touchpad. This profile field asserted
+> `27c6:0f9a` for `XWC-P` on exactly that reasoning until 2026-08-22, and it was
+> wrong; see [the XWC-P page](../../docs/hardware/xwc-p.md#the-touchpad-id-is-not-27c60f9a).
+>
+> Making the touchpad *exist at all* is a different problem, in
+> [`../acpi-override/`](../acpi-override/). `DRA-XX` (2024) and `DRB-P` (2025)
+> have no such failure and their touchpads work out of the box.
+
 | | |
 |---|---|
 | Symptom | sliding along the left edge of the touchpad does nothing under Linux; the right edge changes volume and works |

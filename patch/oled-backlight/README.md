@@ -168,7 +168,7 @@ measured above. OLED behaviour at the bottom of the range varies between
 panels, so measuring your own is still worth the two minutes.
 
 The installer keeps the extracted factory blob at
-`/var/lib/honor-zqcp/vbt-factory.bin` and always patches from it, so re-running
+`/var/lib/honor/vbt-factory.bin` and always patches from it, so re-running
 with a different `VBT_MIN` does the right thing.
 
 `uninstall.sh` reverts everything. Dropping the kernel parameter alone is
@@ -388,7 +388,7 @@ the VBT frequency field if that register reads zero.
 
 **A BIOS update invalidates the blob.** The installed VBT is a copy of the one
 that shipped with the BIOS present at install time. `install.sh` records the
-BIOS version in `/var/lib/honor-zqcp/oled-backlight.stamp`; re-run it after any
+BIOS version in `/var/lib/honor/oled-backlight.stamp`; re-run it after any
 firmware update.
 
 ## Approaches that were ruled out

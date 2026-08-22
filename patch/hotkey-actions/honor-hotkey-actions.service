@@ -1,0 +1,22 @@
+[Unit]
+Description=Act on the HONOR hotkeys the desktop ignores
+Documentation=file:/usr/local/share/doc/honor/hotkey-actions.md
+After=multi-user.target power-profiles-daemon.service
+Wants=power-profiles-daemon.service
+
+[Service]
+Type=simple
+ExecStart=/usr/local/lib/honor/honor-hotkey-actions.py
+Restart=always
+RestartSec=5
+# It reads one input device and writes two sysfs attributes. Nothing else.
+ProtectHome=yes
+ProtectSystem=strict
+ReadWritePaths=/sys/bus/usb/devices
+PrivateTmp=yes
+NoNewPrivileges=yes
+RestrictAddressFamilies=AF_UNIX
+MemoryDenyWriteExecute=yes
+
+[Install]
+WantedBy=multi-user.target

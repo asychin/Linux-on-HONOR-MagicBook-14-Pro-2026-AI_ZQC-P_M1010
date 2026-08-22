@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Re-applies the fixes that a package update would otherwise revert.
 #
-# Installed to /usr/local/lib/honor-zqcp/rebuild.sh and invoked by the pacman
+# Installed to /usr/local/lib/honor/rebuild.sh and invoked by the pacman
 # hooks in this directory. Never fails a transaction: every problem is reported
 # and the script still exits 0.
 #
@@ -13,10 +13,10 @@
 
 set -uo pipefail
 
-CONF=/etc/honor-zqcp-autorebuild.conf
-LOG=/var/log/honor-zqcp-autorebuild.log
+CONF=/etc/honor-autorebuild.conf
+LOG=/var/log/honor-autorebuild.log
 
-log() { printf '  [honor-zqcp] %s\n' "$*"; }
+log() { printf '  [honor] %s\n' "$*"; }
 
 if [[ ! -r "$CONF" ]]; then
     log "no $CONF - nothing to do"
@@ -48,7 +48,7 @@ run_fix() {
 
 mode="${1:-}"
 
-DEFERRED=/usr/local/lib/honor-zqcp/deferred.sh
+DEFERRED=/usr/local/lib/honor/deferred.sh
 
 # Everything that needs the network or the pacman database has to run outside
 # the transaction, so it is handed to a transient unit that waits for the
@@ -91,13 +91,13 @@ modules)
 
     log "scheduling a rebuild for: ${!kvers[*]}"
     log "  progress: $LOG"
-    defer honor-zqcp-rebuild-modules --setenv=KVERS="${!kvers[*]}"
+    defer honor-rebuild-modules --setenv=KVERS="${!kvers[*]}"
     ;;
 
 fingerprint)
     log "libfprint updated, re-applying the fingerprint patch in the background"
     log "  progress: $LOG"
-    defer honor-zqcp-rebuild-fingerprint --setenv=BUILD_USER="$BUILD_USER"
+    defer honor-rebuild-fingerprint --setenv=BUILD_USER="$BUILD_USER"
     ;;
 
 *)

@@ -2,13 +2,19 @@
 
 | | |
 |---|---|
-| Status | fix exists, waiting upstream |
+| Status | **merged upstream.** In Linux **7.2**; queued for **7.1.10** |
+| Commit | [`410c44b10967`](https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/commit/?id=410c44b1096789d0c40fbee706520e981dba7bc1) |
 | Author | Donglin Lyu, not this repository |
 | Replaces | `i8042.dumbkbd=1` |
-| Needs | a kernel rebuild until it lands |
+| Needs | nothing, on a kernel new enough |
 
-This directory holds a copy of an upstream patch for reference. There is no
-installer, because the fix cannot be applied without rebuilding the kernel.
+**On Linux 7.2 or 7.1.10 and later there is nothing to do here.** Drop
+`i8042.dumbkbd=1` and the Caps Lock LED comes back; see
+[removing the parameter](#removing-the-parameter) below.
+
+This directory stays for people on older kernels, and as the record of what the
+parameter was working around. It holds a copy of the upstream patch. There is
+no installer, because the fix cannot be applied without rebuilding the kernel.
 
 ## The problem
 
@@ -35,8 +41,28 @@ third entry of an established pattern rather than a new mechanism.
 With the quirk in place the keyboard works with **no boot parameters at all**,
 and the Caps Lock LED comes back.
 
-Upstream submission:
-<https://patchwork.kernel.org/project/linux-input/patch/20260801151115.52709-1-donglin_lyu@outlook.com/>
+## Where it landed
+
+Commit `410c44b1096789d0c40fbee706520e981dba7bc1`, "Input: atkbd - skip
+deactivate for HONOR ZQC-P", authored 2026-08-02 and applied by Dmitry Torokhov
+with the note `[dtor: keep all HONOR entries together]`. It carries
+`Cc: stable@vger.kernel.org`, and `Tested-by: Ruslan Shevchenko
+<adefka@gmail.com>` — the testing recorded further down this page.
+
+* **Linux 7.2** has it. Verified absent from 7.1, present in 7.2.
+* **7.1.y**: `stable-queue.git` holds
+  `queue-7.1/input-atkbd-skip-deactivate-for-honor-zqc-p.patch`, added
+  2026-08-20 and listed in `queue-7.1/series`, so **7.1.10** is the first 7.1
+  release with it. 7.1.9, released 2026-08-19, does **not** have it.
+
+> Patchwork still shows the submission
+> ([20260801151115.52709-1-donglin_lyu@outlook.com](https://patchwork.kernel.org/project/linux-input/patch/20260801151115.52709-1-donglin_lyu@outlook.com/))
+> as state "new", and the same is true of the BCC-N patch whose commit shipped in
+> 7.1. The `linux-input` tracker is not kept in sync with the tree. Check git.
+
+The table now has four HONOR entries: `FMB-P` (6.19, and `FMB-PM` with it,
+because `DMI_MATCH` is a `strstr`), `BCC-N` (7.1) and `ZQC-P` (7.2). `XWC-P` is
+the one MagicBook still missing from it.
 
 ## Verified on this unit
 
@@ -72,8 +98,12 @@ Applying the patch means rebuilding the kernel package, and repeating that after
 every kernel update.
 
 That is not worth it for a dark LED, so `apply_patch.sh` keeps
-`i8042.dumbkbd=1`. Once the patch lands and reaches your kernel, remove the
-parameter:
+`i8042.dumbkbd=1`.
+
+## Removing the parameter
+
+On 7.2 or 7.1.10 and later, the quirk is in your kernel and the parameter is
+just costing you the LED:
 
 ```sh
 sudo sed -i 's/ i8042\.dumbkbd=1//' /etc/default/limine
@@ -91,7 +121,16 @@ ls /sys/class/leds/ | grep capslock     # input2::capslock
 If the keyboard misbehaves after removing the parameter, your kernel does not
 carry the quirk yet. Put it back the same way.
 
+Or check before rebooting, without guessing at version numbers:
+
+```sh
+zgrep -c 'HONOR.*ZQC-P' /proc/config.gz 2>/dev/null   # not in the config
+strings /boot/vmlinuz-* | grep -c ZQC-P               # 1 if the quirk is there
+```
+
 ## Rebuilding a kernel with it yourself
+
+Only needed below 7.1.10.
 
 ```sh
 git clone --depth 1 https://github.com/CachyOS/linux-cachyos

@@ -1,0 +1,11 @@
+[Unit]
+Description=Re-apply the HONOR battery charge limit after resume
+After=suspend.target hibernate.target hybrid-sleep.target suspend-then-hibernate.target
+ConditionPathExists=/sys/devices/platform/huawei-wmi/charge_control_thresholds
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/lib/honor/honor-battery-threshold.sh
+
+[Install]
+WantedBy=suspend.target hibernate.target hybrid-sleep.target suspend-then-hibernate.target

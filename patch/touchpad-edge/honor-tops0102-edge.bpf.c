@@ -73,8 +73,17 @@
 #include "hid_bpf_helpers.h"
 #include <bpf/bpf_tracing.h>
 
+/*
+ * The touchpad this was written against. install.sh passes -D for both from
+ * the device profile, so a model with a different touchpad does not need a
+ * copy of this file; the defaults keep it compilable on its own.
+ */
+#ifndef VID_GOODIX
 #define VID_GOODIX		0x27c6
+#endif
+#ifndef PID_TOPS0102
 #define PID_TOPS0102		0x0f9a
+#endif
 
 HID_BPF_CONFIG(
 	HID_DEVICE(BUS_I2C, HID_GROUP_MULTITOUCH_WIN_8, VID_GOODIX, PID_TOPS0102)

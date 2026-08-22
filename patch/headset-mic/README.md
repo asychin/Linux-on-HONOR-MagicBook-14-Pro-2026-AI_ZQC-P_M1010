@@ -8,10 +8,11 @@ Plugging a headset into the combo jack gives working playback but no capture —
 the headset microphone is not exposed at all.
 
 The codec is a Realtek ALC256. Its behaviour on any given laptop depends on a
-per-machine quirk table in `sound/pci/hda/patch_realtek.c` (`alc269.c` in the
-split-out layout current kernels use), keyed by PCI subsystem id. This unit
-reports SSID **`1ee7:209d`**, which has no entry, so the driver falls back to
-generic pin defaults that leave the headset mic pin unconfigured.
+per-machine quirk table keyed by PCI subsystem id, which now lives in
+`sound/hda/codecs/realtek/alc269.c` — `sound/pci/hda/patch_realtek.c` no longer
+exists in current kernels. This unit reports SSID **`1ee7:209d`**, which has no
+entry, so the driver falls back to generic pin defaults that leave the headset
+mic pin unconfigured.
 
 ## The fix
 
@@ -78,7 +79,7 @@ led_trigger_event(trig, route ? LED_OFF : LED_ON);
 The LED lights only when *every* attached control is muted. With both attached,
 muting one leaves the other unmuted and the LED stays dark. Verified live.
 
-`51-honor-zqcp-mic-priority.conf` fixes it at the right layer: it lowers the
+`51-honor-mic-priority.conf` fixes it at the right layer: it lowers the
 jack input to `priority.session = 1400`, below the array. The array becomes the
 default again, Fn+F7 mutes `Dmic0 Capture Switch`, and the LED follows. The jack
 input stays fully usable, applications can still select it.
@@ -115,3 +116,36 @@ booted.
 Earlier revisions installed the module *over* the packaged one. `install.sh`
 detects that, restores the pristine file when the backup matches the kernel,
 and switches to the overlay.
+
+---
+
+## Upstream status
+
+**Never submitted.** A tree-wide grep for `1ee7` in Linux 7.1.8 and in current
+`master` finds exactly two `SND_PCI_QUIRK` entries, and neither is this
+machine:
+
+| SSID | Machine | Fixup | Landed |
+|---|---|---|---|
+| `1ee7:2078` | HONOR BRB-X M1010 | `ALC2XX_FIXUP_HEADSET_MIC` | v6.17, commit `b26e2afb3834` |
+| `1ee7:2081` | HONOR MRB-XXX M1020 | a board-specific pin table | v7.1, commit `d9448dca4235` |
+
+So `1ee7:209d` is a genuine gap, and this module overlay will be needed until
+somebody sends the one-line patch.
+
+Both precedents are useful, and the first one especially: it was accepted from
+an ordinary contributor and it uses **exactly the fixup this repository
+applies**. ["ALSA: hda/realtek: Fix headset mic on HONOR BRB-X"](https://patchwork.kernel.org/project/alsa-devel/list/?series=&q=HONOR+BRB-X)
+is the template — same vendor, same codec, same fixup, three lines of diff.
+The MRB-XXX one shows what to do instead if `ALC2XX_FIXUP_HEADSET_MIC` had not
+been enough: its own pin table,
+`{0x14,0x90170111},{0x19,0x03a1113c},{0x1a,0x22a190a0},{0x1b,0x90170110}`.
+
+Also worth knowing: **`M1010` does not identify a machine.** The upstream
+`1ee7:2078` entry is labelled "HONOR BRB-X M1010" — a different product name
+with the same DMI `product_version` string as this unit, and a different audio
+subsystem id. Never key anything on `product_version` alone.
+
+None of `1ee7:209d`, `2066`, `207a`, `204d`, `2059`, `2074` or `210c` — the
+subsystem ids recorded across [`devices/`](../../devices/) — has an entry
+upstream.

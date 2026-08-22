@@ -6,8 +6,9 @@
 # is already lit by the GOP at that point, so the screen shows garbage.
 # See README.md in this directory for the trace.
 #
-# The fix is a 4-line upstream patch that has not been merged yet, so the
-# module has to be rebuilt locally. Only xe.ko is rebuilt: it compiles
+# The fix is a 4-line upstream patch. It reached drm-intel-next on 2026-08-21
+# and rides the merge window into Linux 7.3, so on any kernel you can install
+# today the module has to be rebuilt locally. Only xe.ko is rebuilt: it compiles
 # i915-display/intel_cdclk.o straight out of drivers/gpu/drm/i915/display/,
 # so the whole kernel does not have to be built.
 #
@@ -17,7 +18,7 @@
 # Env knobs:
 #   KVER=...     build for another installed kernel (default: running one)
 #   JOBS=N       parallel compile jobs (default: nproc)
-#   WORKDIR=...  where to unpack the source (default: /var/tmp/honor-zqcp-cdclk)
+#   WORKDIR=...  where to unpack the source (default: /var/tmp/honor-cdclk)
 #   KEEP_SRC=1   do not delete the source tree afterwards
 #   REGEN=0      do not regenerate the initramfs (the caller will)
 
@@ -32,7 +33,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PATCH_FILE="${SCRIPT_DIR}/0001-drm-i915-cdclk-avoid-spurious-cdclk-sanitization-on-PTL.patch"
 KVER="${KVER:-$(uname -r)}"
 JOBS="${JOBS:-$(nproc)}"
-WORKDIR="${WORKDIR:-/var/tmp/honor-zqcp-cdclk}"
+WORKDIR="${WORKDIR:-/var/tmp/honor-cdclk}"
 KEEP_SRC="${KEEP_SRC:-0}"
 REGEN="${REGEN:-1}"
 MODDIR="/usr/lib/modules/${KVER}"
@@ -45,9 +46,23 @@ die()  { printf '\033[1;31m==>\033[0m %s\n' "$*" >&2; exit 1; }
 [[ -f "$PATCH_FILE" ]] || die "patch not found: $PATCH_FILE"
 [[ -d "$MODDIR" ]]     || die "no module tree for kernel $KVER"
 
-if ! lspci -nn 2>/dev/null | grep -qiE '00:02\.0 .*(Panther Lake|Wildcat Lake)'; then
-    warn "no Panther Lake / Wildcat Lake iGPU found on 00:02.0."
-    warn "The bug is specific to display IP version 30 and newer. Continuing anyway."
+# Tier A: the patch either applies to the kernel source or it does not, and the
+# bug is a property of the display IP rather than of the model.
+source "${SCRIPT_DIR}/../../lib/gate.sh"
+honor_gate cdclk-ptl
+
+# The bug needs display IP 30, which arrived with Panther Lake. Earlier
+# platforms still have the CD2X pipe field the sanitization compares.
+if [[ "$(profile_get platform)" != "pantherlake" ]]; then
+    die "$(profile_get model) is platform '$(profile_get platform)', and this
+    regression only affects display IP version 30 and newer, which arrived with
+    Panther Lake. Nothing to fix here."
+fi
+
+LSPCI_OUT="$(lspci -nn 2>/dev/null || true)"
+if ! grep -qiE '00:02\.0 .*(Panther Lake|Wildcat Lake)' <<< "$LSPCI_OUT"; then
+    warn "no Panther Lake / Wildcat Lake iGPU found on 00:02.0, though the"
+    warn "profile says this is a Panther Lake machine. Continuing anyway."
 fi
 
 # The regression landed in v7.1.6 and is still unfixed in every later release.
@@ -69,21 +84,13 @@ log "jobs    = $JOBS"
 # --- 2. toolchain -------------------------------------------------------------
 # The module has to be built with the same compiler family as the kernel,
 # otherwise the LTO objects do not match.
-CONFIG_SRC=""
-if [[ -r /proc/config.gz ]]; then
-    CONFIG_SRC="/proc/config.gz"
-elif [[ -r "${MODDIR}/build/.config" ]]; then
-    CONFIG_SRC="${MODDIR}/build/.config"
-else
-    die "no kernel config available (need /proc/config.gz or ${MODDIR}/build/.config)"
-fi
-
-read_config() {
-    if [[ "$CONFIG_SRC" == *.gz ]]; then zcat "$CONFIG_SRC"; else cat "$CONFIG_SRC"; fi
-}
+distro_kernel_config_path "$KVER" >/dev/null \
+    || die "no kernel config available for $KVER.
+    Expected /proc/config.gz, /boot/config-$KVER or ${MODDIR}/build/.config."
+read_config() { distro_kernel_config_cat "$KVER"; }
 
 MAKEVARS=()
-if read_config | grep -q '^CONFIG_CC_IS_CLANG=y'; then
+if distro_kernel_config_has CONFIG_CC_IS_CLANG=y "$KVER"; then
     MAKEVARS=(LLVM=1 LLVM_IAS=1 CC=clang LD=ld.lld)
     NEED=(clang ld.lld llvm-strip llvm-objcopy)
 else
@@ -143,6 +150,19 @@ fi
 cd "$SRCDIR"
 
 # --- 4. patch -----------------------------------------------------------------
+# Upstream took a different shape than the patch carried here: instead of
+# guarding the two lines with DISPLAY_VER(display) < 30, commit 1786d2688781
+# introduced a has_cd2x_pipe_select() helper, and 1ceb1ef81c32 moved the rest
+# of the driver onto it. So a tree that already has the fix will NOT reverse-
+# apply our patch — it has to be recognised by the helper's presence.
+CDCLK_SRC="drivers/gpu/drm/i915/display/intel_cdclk.c"
+if [[ -r "$CDCLK_SRC" ]] && grep -q 'has_cd2x_pipe_select' "$CDCLK_SRC"; then
+    log "this kernel carries the upstream fix (has_cd2x_pipe_select). Nothing to do."
+    log "patch/cdclk-ptl/ is obsolete on this kernel; uninstall_patch.sh will"
+    log "remove any module this repository installed earlier."
+    exit 0
+fi
+
 if patch -Np1 -R --dry-run --silent < "$PATCH_FILE" >/dev/null 2>&1; then
     log "fix already present in the source tree"
 elif patch -Np1 --dry-run --silent < "$PATCH_FILE" >/dev/null 2>&1; then
@@ -150,8 +170,9 @@ elif patch -Np1 --dry-run --silent < "$PATCH_FILE" >/dev/null 2>&1; then
     patch -Np1 < "$PATCH_FILE"
 else
     die "the patch does not apply to this tree.
-    Either the fix has landed upstream, in which case this whole directory is
-    obsolete, or the source does not match the running kernel."
+    Either the fix has landed upstream in a shape this installer does not
+    recognise, in which case this whole directory is obsolete, or the source
+    does not match the running kernel."
 fi
 
 # --- 5. configure exactly like the running kernel -----------------------------
@@ -218,14 +239,7 @@ echo "    $(modinfo -k "$KVER" xe | grep -E '^filename:')"
 # be refreshed too, otherwise the stock module is the one that lights the panel.
 if [[ "$REGEN" == "1" ]]; then
     log "regenerating the initramfs"
-    if command -v limine-mkinitcpio >/dev/null; then
-        limine-mkinitcpio
-    elif command -v mkinitcpio >/dev/null; then
-        /usr/bin/mkinitcpio -P
-        command -v limine-update >/dev/null && limine-update
-    else
-        warn "no mkinitcpio found, regenerate the initramfs yourself"
-    fi
+    distro_initramfs_rebuild || warn "regenerate the initramfs yourself"
 else
     log "REGEN=0, skipping the initramfs rebuild"
 fi

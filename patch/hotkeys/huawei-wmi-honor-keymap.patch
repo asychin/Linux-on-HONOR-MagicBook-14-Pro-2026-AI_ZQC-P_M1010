@@ -1,0 +1,60 @@
+platform/x86: huawei-wmi: add the HONOR hotkey codes
+
+The driver's keymap covers the Huawei MateBook function keys and a handful of
+HONOR ones. Several codes HONOR MagicBook laptops emit are absent, so those
+keys reach the driver, fail the sparse_keymap lookup, and end up in dmesg as
+"Unknown key pressed, code: 0x02xx" instead of as key events.
+
+Confirmed emitted on a HONOR MagicBook Pro 14 2026 (ZQC-P) by pressing every
+key with the driver logging unmapped codes:
+
+  0x283 / 0x2a3  touchpad lock on / off
+  0x288          camera shutter
+  0x2a1          performance mode
+  0x2b1 / 0x2b2  keyboard backlight, level down
+  0x2b3          keyboard backlight, level up
+  0x2e5          EC backlight notification, not a key press
+
+The remaining entries are from the same family and are reported on the
+HONOR MagicBook Pro 14 2025 (FMB-P); they are harmless on models that do not
+send them.
+
+sparse_keymap cannot be extended from userspace: EVIOCSKEYCODE, which is what
+a udev hwdb entry uses, looks the scancode up in the driver's table first and
+returns -EINVAL for anything not already there. So this has to be a driver
+change.
+
+Based on aymanbagabas/Huawei-WMI#93 and the FMB-P list in
+colorcube/Linux-on-Honor-Magicbook-14-Pro#4, adapted to the in-kernel driver.
+---
+--- a/drivers/platform/x86/huawei-wmi.c
++++ b/drivers/platform/x86/huawei-wmi.c
+@@ -91,6 +91,28 @@
+ 	{ KE_IGNORE, 0x295, { KEY_KBDILLUMUP } },
+ 	// Ignore Ambient Light Sensoring
+ 	{ KE_KEY,    0x2c1, { KEY_RESERVED } },
++	/* HONOR: touchpad lock toggle */
++	{ KE_KEY,    0x283, { KEY_TOUCHPAD_ON } },
++	{ KE_KEY,    0x2a3, { KEY_TOUCHPAD_OFF } },
++	/* HONOR: camera shutter */
++	{ KE_KEY,    0x288, { KEY_CAMERA_ACCESS_TOGGLE } },
++	/* HONOR: keyboard backlight level */
++	{ KE_KEY,    0x2b1, { KEY_KBDILLUMDOWN } },
++	{ KE_KEY,    0x2b2, { KEY_KBDILLUMDOWN } },
++	{ KE_KEY,    0x2b3, { KEY_KBDILLUMUP } },
++	{ KE_KEY,    0x2b4, { KEY_KBDILLUMTOGGLE } },
++	/* HONOR: performance mode */
++	{ KE_KEY,    0x2a0, { KEY_PROG1 } },
++	{ KE_KEY,    0x2a1, { KEY_PROG1 } },
++	{ KE_KEY,    0x2a6, { KEY_PROG1 } },
++	/* HONOR: refresh rate toggle */
++	{ KE_KEY,    0x2a7, { KEY_REFRESH_RATE_TOGGLE } },
++	/* HONOR: camera module */
++	{ KE_KEY,    0x2e0, { KEY_CAMERA_ACCESS_ENABLE } },
++	{ KE_KEY,    0x2e1, { KEY_CAMERA_ACCESS_DISABLE } },
++	/* HONOR: EC keyboard-backlight notifications, not key presses */
++	{ KE_IGNORE, 0x2e5, { KEY_RESERVED } },
++	{ KE_IGNORE, 0x2e6, { KEY_RESERVED } },
+ 	{ KE_END,	 0 }
+ };
+ 

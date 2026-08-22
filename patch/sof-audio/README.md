@@ -1,8 +1,16 @@
 # SOF DSP suspend/resume panic — preventive backport
 
+| | |
+|---|---|
+| Status | **merged upstream and released in Linux 7.2.** Obsolete there and on 7.1.10 |
+| Applies to | 7.1.9 and older in the 7.1 series, and anything before 7.2 |
+
 **This fix is preventive.** The bug it addresses never reproduced on the unit
 this repo was developed on. It is shipped because the upstream fix is small and
 clean and the trigger is workload-dependent, so it may surface later.
+
+On a kernel that already carries it the installer is a no-op. See
+[upstream status](#upstream-status) at the bottom.
 
 ## The upstream bug
 
@@ -17,10 +25,12 @@ The stale cached payload is then sent to firmware carrying boot-time DMA
 channel assignments, which collide with the newly allocated ones. Result: DMA
 channel conflict, firmware panic, dead audio until reboot.
 
-Documented upstream as thesofproject/sof#10700, *"Dell XPS 14 DA14260 (Panther
-Lake): DSP error when unsuspending"*. The fix is Peter Ujfalusi's copier-payload
-refresh, thesofproject/linux PR #5762 — one file, refreshing the payload before
-widget setup.
+Documented upstream as
+[thesofproject/sof#10700](https://github.com/thesofproject/sof/issues/10700),
+*"Dell XPS 14 DA14260 (Panther Lake, `1028:0db9`): DSP error when
+unsuspending"*. The fix is Peter Ujfalusi's copier-payload refresh,
+[thesofproject/linux PR #5762](https://github.com/thesofproject/linux/pull/5762)
+— one file, refreshing the payload before widget setup.
 
 ## Why it is here despite not reproducing
 
@@ -66,3 +76,30 @@ than hardcoded, because that directory's contents drift between versions. The
 patch itself was rebased against v7.1.5 on 2026-08-01; if a future kernel moves
 the code it targets, `install.sh` exits with code `3` and the hook reports the
 fix as *not applicable* rather than failing.
+
+---
+
+## Upstream status
+
+Merged, released, done.
+
+* PR [#5762](https://github.com/thesofproject/linux/pull/5762) "ASoC: SOF:
+  ipc4-topology: Refresh copier IPC payload before widget setup" was merged into
+  `topic/sof-dev` on 2026-06-10 as commit
+  `5967a530be5ee77c4b1ea00b2cbb0e09204e918d` — the sha in this directory's
+  patch header.
+* It reached mainline and **shipped in Linux 7.2**.
+* The 7.1 series gets it in **7.1.10**, alongside the `atkbd` quirk.
+
+So on 7.2, or 7.1.10 and later, there is nothing here to install. The installer
+detects the fix in the source tree and skips the rebuild.
+
+Two things that are easy to misread:
+
+* **thesofproject/sof issue 10700 is still OPEN** despite the fix having
+  shipped. Upstream leaves it open pending confirmation from reporters. Do not
+  read that as "unfixed".
+* **The reporting machine is a Dell XPS 14, not a HONOR.** The bug is a Panther
+  Lake SOF issue, not a HONOR one — which is also why this repository never
+  reproduced it, and why the fix stays labelled preventive rather than
+  "verified here".

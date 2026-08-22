@@ -1,0 +1,21 @@
+# Make the desktop's own battery limit switch land on a pair the EC accepts.
+#
+# UPower does not invent the thresholds it writes: it takes them from the
+# CHARGE_LIMIT udev property, and upstream's 60-upower-battery.hwdb sets a
+# catch-all
+#
+#     battery:*:*:dmi:*
+#      CHARGE_LIMIT=75,80
+#
+# 75,80 is a sensible default for most laptops and a dead letter on this one:
+# the HONOR EC only arms its charge limiter for the pairs HONOR PC Manager
+# offers, so 75-80 is stored and ignored and the battery charges to 100%.
+# See patch/battery/README.md.
+#
+# 70,90 is the middle preset ("90%" in PC Manager). With this in place the
+# GNOME and KDE toggles do the right thing on their own.
+#
+# The file has to sort after 60-upower-battery.hwdb, hence 61-.
+
+battery:*:*:dmi:*svnHONOR*pnZQC-P*
+ CHARGE_LIMIT=70,90

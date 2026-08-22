@@ -12,5 +12,5 @@ Target = usr/lib/modules/*/vmlinuz
 [Action]
 Description = Rebuilding HONOR ZQC-P kernel module fixes...
 When = PostTransaction
-Exec = /usr/local/lib/honor-zqcp/rebuild.sh modules
+Exec = /usr/local/lib/honor/rebuild.sh modules
 NeedsTargets

@@ -1,0 +1,98 @@
+fpcmoc: add 10a5:9924 support, for libfprint 1.94.100
+
+Rebase of the minimal 10a5:9924 patch onto libfprint 1.94.100, where fpcmoc was
+restructured: the response fields moved from a `presp` struct into locals filled
+by a byte reader, and the identity check that used to appear once now appears
+twice.
+
+Only the verify/identify site is loosened. The other one, in the enrolment path,
+is the duplicate-template check; accepting the 0x4 identity there would make
+every enrolment look like a duplicate.
+
+The probe-time product switch also gained the id, so the device no longer
+lands in the `default:` branch that logs "Device %x is not supported".
+
+Origin: the 0x4 identity handling and the fallback are from
+colorcube/Linux-on-Honor-Magicbook-14-Pro PR #21 (tsukasagenesis), written
+against libfprint 1.94.9/1.94.10. This is that work carried forward, nothing
+more.
+
+Known limitation, inherited: the 0x4 identity is an opaque per-enrolment token,
+so with more than one finger enrolled IDENTIFY reports the first template
+rather than the one presented. The device has genuinely matched an enrolled
+finger; the token just does not say which. VERIFY is unaffected.
+
+Checked here: applies to v1.94.100, compiles clean, and the built library lists
+10a5:9924 in fprint-list-supported-devices. NOT verified on the sensor itself,
+which nobody here has.
+---
+diff --git a/libfprint/drivers/fpcmoc/fpc.c b/libfprint/drivers/fpcmoc/fpc.c
+index 2a0d9ab..ab7e6a5 100644
+--- a/libfprint/drivers/fpcmoc/fpc.c
++++ b/libfprint/drivers/fpcmoc/fpc.c
+@@ -72,6 +72,7 @@ static const FpIdEntry id_table[] = {
+   { .vid = 0x10A5,  .pid = 0xD805,  },
+   { .vid = 0x10A5,  .pid = 0xD205,  },
+   { .vid = 0x10A5,  .pid = 0x9524,  },
++  { .vid = 0x10A5,  .pid = 0x9924,  },
+   { .vid = 0x10A5,  .pid = 0x9544,  },
+   { .vid = 0x10A5,  .pid = 0xC844,  },
+   { .vid = 0x10A5,  .pid = 0x9B24,  },
+@@ -1405,8 +1406,12 @@ fpc_identify_cb (FpiDeviceFpcMoc *self,
+       return;
+     }
+ 
++  /* Some newer FPC sensors (e.g. 10a5:9924, FW 3334151) report a matched
++   * identity with type 0x4 instead of the bound FPC_IDENTITY_TYPE_RESERVED
++   * form. Accept both here, in the verify/identify path only. */
+   if ((status == 0) && (subfactor == FPC_SUBTYPE_RESERVED) &&
+-      (identity_type == FPC_IDENTITY_TYPE_RESERVED) &&
++      (identity_type == FPC_IDENTITY_TYPE_RESERVED ||
++       identity_type == FPC_IDENTITY_TYPE_9924) &&
+       (identity_size <= SECURITY_MAX_SID_SIZE))
+     {
+       FpPrint *match = NULL;
+@@ -1440,6 +1445,22 @@ fpc_identify_cb (FpiDeviceFpcMoc *self,
+           fpi_ssm_mark_completed (self->task_ssm);
+           return;
+         }
++
++      /* The 0x4 identity is an opaque per-enrolment token that cannot be
++       * reconstructed on the host, so the comparison above can never match.
++       * The secure element has already done the biometric match against its
++       * own database (status == 0), so trust that decision. With more than one
++       * finger enrolled this reports the first template rather than the one
++       * actually presented: the device confirms a genuine enrolled finger but
++       * the token does not say which. */
++      if (identity_type == FPC_IDENTITY_TYPE_9924 && templates->len > 0)
++        {
++          FpPrint *print = g_ptr_array_index (templates, 0);
++
++          fpi_device_identify_report (device, print, match, error);
++          fpi_ssm_mark_completed (self->task_ssm);
++          return;
++        }
+     }
+ 
+   fpi_device_identify_report (device, NULL, NULL, error);
+@@ -1835,6 +1856,7 @@ fpc_dev_probe (FpDevice *device)
+     case 0xD205:
+     case 0x9524:
+     case 0x9544:
++    case 0x9924:
+     case 0xC844:
+       self->max_enroll_stage = MAX_ENROLL_SAMPLES;
+       break;
+diff --git a/libfprint/drivers/fpcmoc/fpc.h b/libfprint/drivers/fpcmoc/fpc.h
+index a8c5c6c..95d9d80 100644
+--- a/libfprint/drivers/fpcmoc/fpc.h
++++ b/libfprint/drivers/fpcmoc/fpc.h
+@@ -49,6 +49,8 @@
+ #define FPC_DB_ID_LEN (16)
+ #define FPC_IDENTITY_TYPE_WILDCARD (0x1)
+ #define FPC_IDENTITY_TYPE_RESERVED (0x3)
++/* Opaque per-enrolment token reported by newer firmware, e.g. 10a5:9924 */
++#define FPC_IDENTITY_TYPE_9924       (0x4)
+ #define FPC_IDENTITY_WILDCARD (0x25066282)
+ #define FPC_SUBTYPE_ANY (0xFF)
+ #define FPC_SUBTYPE_RESERVED (0xF5)

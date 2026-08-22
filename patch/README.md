@@ -8,6 +8,15 @@ so it can be invoked directly from anywhere.
 Developed and tested on BIOS 1.10, Core Ultra X9 388H (Panther Lake), CachyOS,
 kernel 7.1.5.
 
+Which fixes an installer will run depends on the device profile in
+[`devices/`](../devices/) that matches the machine. Thirteen further HONOR
+MagicBook profiles are recognised, all of them from somebody else's hardware or
+from a hardware probe rather than from a machine anybody here owns; on those,
+only the fixes that cannot carry another machine's constants are offered, and
+on several of them the honest answer is that nothing here applies at all. See
+[`docs/hardware/`](../docs/hardware/) for what is known about each, and
+[`docs/ADDING-A-MODEL.md`](../docs/ADDING-A-MODEL.md) for adding one.
+
 ## Status
 
 | Area | Status | Fix |
@@ -18,12 +27,15 @@ kernel 7.1.5.
 | Headset microphone, 3.5 mm jack | works | [`headset-mic/`](headset-mic/) — one-line `SND_PCI_QUIRK` for ALC256 |
 | OLED minimum brightness too low, uneven steps | works | [`oled-backlight/`](oled-backlight/) — patched VBT raises the firmware's backlight floor |
 | Touchpad left-edge slide does nothing | works | [`touchpad-edge/`](touchpad-edge/) — HID-BPF turns the vendor gesture report into brightness keys |
-| Garbled screen at boot on 7.1.6+ | works, opt-in | [`cdclk-ptl/`](cdclk-ptl/) — rebuilds `xe.ko` with the unmerged upstream CDCLK fix for Panther Lake |
-| Fan RPM readout | works | [`fan/`](fan/) — `honor-zqcp-hwmon` module |
-| Fan control | not available | [`fan/README.md`](fan/README.md) — every OS-side path was tested, the EC ignores all of them |
-| SOF DSP suspend/resume panic | preventive | [`sof-audio/`](sof-audio/) — upstream IPC4 backport; the race never reproduced on this unit |
-| Fixes reverted by package updates | handled | [`auto-rebuild/`](auto-rebuild/) — pacman hooks that rebuild them automatically |
-| Internal keyboard, Caps Lock LED | upstream pending | [`keyboard-atkbd/`](keyboard-atkbd/) — an `atkbd` DMI quirk replaces `i8042.dumbkbd=1` and restores the LED; verified here, needs a kernel rebuild until merged |
+| Garbled screen at boot on 7.1.6+ | works, opt-in | [`cdclk-ptl/`](cdclk-ptl/) — rebuilds `xe.ko` with the upstream CDCLK fix for Panther Lake. Merged to `drm-intel-next` 2026-08-21, so expect it in 7.3 |
+| Battery charge limit ignored | works | [`battery/`](battery/) — the EC arms only for HONOR's preset pairs; everything else is stored and silently dropped |
+| Performance and camera keys inert | works | [`hotkey-actions/`](hotkey-actions/) — acts on the keys no desktop binds |
+| Fn keys dead, `Unknown key pressed` | works | [`hotkeys/`](hotkeys/) — HONOR codes added to the `huawei-wmi` keymap |
+| Fan RPM readout | works | [`fan/`](fan/) — `honor-ec-sensors` module |
+| Fan speed control | not available | [`fan/README.md`](fan/README.md) — every OS-side path to a duty cycle was tested, the EC ignores all of them, and the one documented HONOR method (`WTER`) is absent from this firmware. Selecting the EC's fan *curve* does work, is measured, and is not shipped |
+| SOF DSP suspend/resume panic | preventive | [`sof-audio/`](sof-audio/) — upstream IPC4 backport; the race never reproduced on this unit. **Merged upstream, released in 7.2** |
+| Fixes reverted by package updates | handled | [`auto-rebuild/`](auto-rebuild/) — package-manager hooks that rebuild them automatically |
+| Internal keyboard, Caps Lock LED | **merged upstream** | [`keyboard-atkbd/`](keyboard-atkbd/) — the `atkbd` DMI quirk is in Linux 7.2 and queued for 7.1.10. There, drop `i8042.dumbkbd=1` and the LED works |
 
 ## Installing
 
@@ -60,6 +72,8 @@ hand. `apply_patch.sh` installs it as its last step.
 | `headset-mic/` | a kernel update leaves the new kernel without the overlay | `auto-rebuild/` hook |
 | `sof-audio/` | same | `auto-rebuild/` hook |
 | `fingerprint/` | a libfprint update replaces the patched package | `auto-rebuild/` hook |
+| `battery/` | a desktop battery applet can overwrite the armed pair | the installed units re-apply it at boot and resume |
+| `hotkeys/` | a kernel update leaves the new kernel without the overlay | `auto-rebuild/` hook |
 | `cdclk-ptl/` | a kernel update leaves the new kernel without the overlay | re-run `install.sh`, deliberately not hooked |
 
 Without the hooks, re-run `headset-mic/install.sh` and `sof-audio/install.sh`
@@ -75,17 +89,36 @@ override to pre-build for the installed kernel instead:
 sudo KVER=7.1.5-1-cachyos bash patch/fan/install.sh
 ```
 
-## Belongs upstream
+## Upstream
 
-Two of these are small enough to belong in the projects themselves, and the
-repo should shrink as they land:
+Where each of these stands, checked 2026-08-22. Each fix's own README carries
+the detail and the commit ids.
 
-- the `libfprint` id addition for Goodix `27c6:6f94`
-- the `SND_PCI_QUIRK` entry for PCI SSID `1ee7:209d`
+**Already merged — these directories are on their way out:**
 
-[`cdclk-ptl/`](cdclk-ptl/) carries an upstream patch verbatim and should be
-deleted, not upstreamed, as soon as the fix reaches a stable kernel.
+| Fix | Where it landed |
+|---|---|
+| [`keyboard-atkbd/`](keyboard-atkbd/) | Linux **7.2**, commit `410c44b10967`, queued for 7.1.10 |
+| [`sof-audio/`](sof-audio/) | Linux **7.2**, from thesofproject PR #5762; 7.1.10 too |
+| [`cdclk-ptl/`](cdclk-ptl/) | `drm-intel-next` 2026-08-21, commit `1786d2688781`, `Cc: stable`. Expect **7.3**, then a 7.1.y/7.2.y backport. Note upstream's fix has a different shape from the patch here |
 
-The SSDT override is firmware-specific and stays here. The mic-mute fix works
-around a real kernel bug in `hid-input.c`, described in
-[`micmute/README.md`](micmute/README.md).
+**Never submitted, and small enough to belong upstream:**
+
+- the `libfprint` id addition for Goodix `27c6:6f94` — no merge request, no
+  issue, and the same is true of `1c7a:05aa` in `egismoc`
+- the `SND_PCI_QUIRK` entry for PCI SSID `1ee7:209d`. Two HONOR entries are
+  already in `alc269.c` and one of them uses exactly this fixup
+- an `atkbd` entry for `XWC-P`, the one HONOR MagicBook missing from that table
+
+**Submitted by somebody else, coordinate before sending:**
+
+- the `huawei-wmi` keycodes. Ruzal Daminov has a series in flight covering
+  `0x288` and more, with mappings identical to
+  [`hotkeys/`](hotkeys/). Do not post a competing patch
+- `libfprint` MR 611 covers `10a5:9924`; it is open and currently unmergeable
+
+**Staying here:** the SSDT override is firmware-specific and belongs to the
+machine. The mic-mute fix works around a real kernel bug in `hid-input.c`,
+described in [`micmute/README.md`](micmute/README.md); an HID-BPF program for it
+would be the first HONOR entry in `drivers/hid/bpf/progs/`, which currently has
+thirty vendor programs and nothing for this one.

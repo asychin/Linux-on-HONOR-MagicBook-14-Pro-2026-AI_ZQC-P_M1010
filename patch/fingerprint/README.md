@@ -108,3 +108,133 @@ found 1 devices
 Device at /net/reactivated/Fprint/Device/0
 ... Goodix MOC Fingerprint Sensor
 ```
+
+## More than one sensor
+
+HONOR ships different fingerprint readers in different markets under the same
+model name, so `sensors/` holds one directory per reader and the installer uses
+whichever is actually on the USB bus.
+
+```
+sensors/
+├── 27c6-6f94-goodixmoc/       Goodix, global ZQC-P — verified here
+├── 10a5-9924-fpcmoc/          FPC, global FMB-P
+└── 1c7a-05aa-egismoc-sdcp/    EgisTec ET171, Chinese units of both
+```
+
+Each carries a `recipe.conf` saying which driver, which patches, which
+libfprint versions the patches were checked against, where the work came from,
+and whether anyone has run it on hardware. Nothing has to be fetched from
+another repository at install time.
+
+| Reader | Source | State |
+|---|---|---|
+| `27c6:6f94` Goodix | the distribution's own libfprint, plus one patch | verified on this machine |
+| `10a5:9924` FPC | same | patches carried in, **not** run on that sensor here |
+| `1c7a:05aa` EgisTec | upstream's SDCP branch at a pinned commit, plus three patches | built and checked here, **not** run on that sensor |
+
+### The EgisTec one is different
+
+That sensor speaks SDCP, Microsoft's Windows Hello protocol, and SDCP support
+is not in any libfprint release yet: it is
+[merge request 547](https://gitlab.freedesktop.org/libfprint/libfprint/-/merge_requests/547).
+So adding an id to the packaged libfprint would achieve nothing. The recipe
+builds upstream's `feature/sdcp-v2` at a pinned commit into `/opt`, and puts it
+ahead of the system library through `ld.so.conf.d`. The distribution's package
+stays installed and untouched:
+
+```sh
+sudo rm -rf /opt/honor-libfprint-sdcp /etc/ld.so.conf.d/00-honor-libfprint-sdcp.conf
+sudo ldconfig
+```
+
+The three patches are Philip Walsh's, from
+[`drphilth/honor-fmbp-libfprint-sdcp`](https://github.com/drphilth/honor-fmbp-libfprint-sdcp),
+carried here verbatim with authorship intact.
+
+### Patches go stale, and the installer says so
+
+A patch written against one libfprint does not necessarily fit the next one.
+`recipe.conf` records the versions each was checked against, and the installer
+refuses rather than applying it with fuzz into a file that has moved on:
+
+```
+this patch was checked against libfprint 1.94.9 1.94.10, and you have 1.94.100.
+Refusing rather than applying it with fuzz into a file that has moved on.
+```
+
+`FP_FORCE_VERSION=1` overrides that if you want to try anyway.
+
+The FPC patch needed exactly this treatment. `fpcmoc` was restructured in
+1.94.100: the response fields moved out of a struct into byte-reader locals,
+and the identity check that appeared once now appears twice. Carrying it
+forward is `0001-fpcmoc-add-10a5-9924-for-libfprint-1.94.100.patch`, which
+applies cleanly to 1.94.100, compiles without warnings, and produces a library
+that lists `10a5:9924`. Only the verify path is loosened; the second site is
+the enrolment duplicate check, and loosening it there would make every
+enrolment look like a duplicate.
+
+That rebase has **not** been run on the sensor, which nobody here has. It also
+inherits a real limitation worth knowing: the sensor answers with an opaque
+per-enrolment token, so with several fingers enrolled `IDENTIFY` reports the
+first template rather than the one presented. The device did match a genuine
+enrolled finger; the token just does not say which. `VERIFY` is unaffected.
+
+Variants, where a recipe offers them:
+
+```sh
+sudo FP_PATCH_VARIANT=old  bash patch/fingerprint/install.sh   # for 1.94.9/1.94.10
+sudo FP_PATCH_VARIANT=full bash patch/fingerprint/install.sh   # the larger FPC effort
+```
+
+---
+
+## Upstream status
+
+Checked 2026-08-22 against `libfprint` master, HEAD
+`c4654fdc85c25afdd9115bec2f95a44145ae3b94` (2026-07-28, "elanmoc: Add new PID
+0xCB6") — the same commit this file was last checked at, so nothing has moved
+since.
+
+| Id | Driver | Upstream state |
+|---|---|---|
+| `27c6:6f94` | `goodixmoc` | **never submitted.** No merge request, no issue. The id table ends at `0x6984` |
+| `1c7a:05aa` | `egismoc` | **not merged.** The id table ends at `0x05a1`. [Issue #776](https://gitlab.freedesktop.org/libfprint/libfprint/-/issues/776) has been open since 2026-03-11 with no answer; [#737](https://gitlab.freedesktop.org/libfprint/libfprint/-/issues/737) was closed without the id landing |
+| `10a5:9924` | `fpcmoc` | **submitted by a third party and stuck.** [MR 611](https://gitlab.freedesktop.org/libfprint/libfprint/-/merge_requests/611) by Zeno-sole, open since 2026-06-29, `merge_status: cannot_be_merged` — it conflicts with master |
+| SDCP itself | — | **not merged and not in any release.** [MR 547](https://gitlab.freedesktop.org/libfprint/libfprint/-/merge_requests/547) has been open since 2025-10-20, is the third attempt after MRs 536 and 544, and is also `cannot_be_merged` |
+
+So every one of these needs a local patch on every distribution, indefinitely.
+That is the reason this directory exists rather than a line in an issue.
+
+**The SDCP pin has not gone stale.** `recipe.conf` pins
+`git_commit=2d7c5277de08c6b29b3fac7447f17a516fbc4d1c`; resolving the upstream
+branch `feature/sdcp-v2` today returns exactly that commit, "sdcp: tweak
+virtual-sdcp driver and test to work with gnome-desktop-testing-runner",
+2026-04-07. The branch has not moved in four months.
+
+### On older distribution libfprint
+
+The `goodixmoc` patch anchors on the `0x6984` line, which does not exist in
+`libfprint` 1.94.7 and older. On Ubuntu 24.04 (`libfprint 1.94.7+tod1`) it will
+not apply. Wusanggg's working substitute, from
+[issue #10](../../../../issues/10), is to edit `goodix.c` by hand:
+
+* add `case 0x6F94:` to the group that sets `max_enroll_stage = 12`
+* add `{ .vid = 0x27c6, .pid = 0x6F94 }` to the id table
+
+Same two changes, applied where the file's structure differs. The installer
+refuses rather than mangling the file, which is the correct behaviour; this is
+the manual route when it does.
+
+### One contradictory report about `27c6:6f94`
+
+[andreas-fe/goodix-27c6-6f94-linux-driver](https://github.com/andreas-fe/goodix-27c6-6f94-linux-driver)
+reverse-engineers the same USB id on a MagicBook Art 14 and concludes it is a
+Goodix GF3268 SDCP sensor speaking TLS 1.2 PSK with AES-128-CBC and
+HMAC-SHA256, where verify, identify, list and delete work through a
+purpose-written driver but **enrolment does not**.
+
+That is not what happens here: through the `goodixmoc` id-table addition,
+enrolment works, and it was checked. Different code paths reach the same
+silicon. Worth knowing before anybody reads that repository and concludes the
+sensor cannot enrol.

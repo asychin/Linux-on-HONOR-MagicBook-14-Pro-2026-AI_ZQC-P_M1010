@@ -1,0 +1,13 @@
+[Unit]
+Description=Re-apply the HONOR battery charge limit
+After=multi-user.target
+# huawei-wmi has to be up before the sysfs node exists.
+ConditionPathExists=/sys/devices/platform/huawei-wmi/charge_control_thresholds
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/lib/honor/honor-battery-threshold.sh
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

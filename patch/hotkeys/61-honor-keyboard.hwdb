@@ -1,0 +1,29 @@
+# The EC sends one extra PS/2 scancode alongside every HONOR hotkey press. It
+# carries no meaning of its own, and atkbd logs "Unknown key pressed" for each
+# one, which on this machine is most of the dmesg noise during normal use.
+#
+# Two things here are easy to get wrong.
+#
+# The scancode is written f8, not e078. udev applies these through the legacy
+# EVIOCSKEYCODE, where the scancode is used directly as an index into atkbd's
+# 512-entry keymap. atkbd in translated set 2 folds the e0 prefix into the high
+# bit, so the index is 0x78 | 0x80 = 0xf8, which is exactly what the kernel
+# prints. An e078 entry is 57464, out of range, and udev rejects it quietly:
+#
+#   event2: Failed to call EVIOCSKEYCODE with scan code 0xe078,
+#           and key code 240: Invalid argument
+#
+# The property still shows up in `udevadm info`, so the rule looks like it is
+# working while the keymap is untouched. Verified here by writing both forms
+# through the same ioctl udev uses: e078 rejected, f8 accepted.
+#
+# And the match is per model rather than every HONOR laptop. f8 is a real key
+# index; silencing it on a model that uses it for something would break that
+# key. Only models where this has actually been observed belong here.
+#
+# To add yours: press the hotkeys, look for "Unknown key pressed ... code 0xNN"
+# in dmesg, and add a line with your product name and that NN.
+
+# HONOR MagicBook Pro 14 2026 — observed and verified here
+evdev:atkbd:dmi:bvn*:bvr*:bd*:svnHONOR*:pnZQC-P*
+ KEYBOARD_KEY_f8=unknown

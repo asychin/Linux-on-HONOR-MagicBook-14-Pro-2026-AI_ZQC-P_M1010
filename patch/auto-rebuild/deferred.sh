@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Does the work that cannot run inside a pacman transaction.
 #
-# Started by /usr/local/lib/honor-zqcp/rebuild.sh through systemd-run, so it
+# Started by /usr/local/lib/honor/rebuild.sh through systemd-run, so it
 # runs outside the transaction with a normal environment: the pacman database
 # is unlocked (needed by the fingerprint package build) and the network is
 # reachable (needed by every installer, which fetches its sources from the
@@ -12,7 +12,7 @@
 set -uo pipefail
 
 REPO="${REPO:?}"
-LOG="${LOG:-/var/log/honor-zqcp-autorebuild.log}"
+LOG="${LOG:-/var/log/honor-autorebuild.log}"
 mode="${1:-}"
 
 w() { printf '%s %s\n' "$(date -Is)" "$*" >>"$LOG"; }
@@ -36,7 +36,9 @@ modules)
             w "${k}: no kernel headers, skipped"
             continue
         fi
-        for fix in headset-mic sof-audio; do
+        # hotkeys builds a module overlay too, so a kernel update drops it
+        # just like the two audio ones.
+        for fix in headset-mic sof-audio hotkeys; do
             rc=0
             KVER="$k" bash "${REPO}/patch/${fix}/install.sh" >>"$LOG" 2>&1 || rc=$?
             case "$rc" in

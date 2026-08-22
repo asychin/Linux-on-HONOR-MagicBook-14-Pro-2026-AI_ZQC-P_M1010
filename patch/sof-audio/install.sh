@@ -75,6 +75,12 @@ cleanup() { rm -rf "$WORK"; }
 trap cleanup EXIT
 
 req() { command -v "$1" >/dev/null || { echo "missing required tool: $1" >&2; exit 1; }; }
+# Tier B: the backport itself is generic kernel code, but whether this race is
+# worth carrying at all is a per-platform judgement, so it stays behind a
+# verified profile.
+source "${SCRIPT_DIR}/../../lib/gate.sh"
+honor_gate sof-audio
+
 req curl
 req zstdcat
 req zstd

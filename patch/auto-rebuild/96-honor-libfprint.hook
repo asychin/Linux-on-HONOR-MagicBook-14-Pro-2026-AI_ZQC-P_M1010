@@ -15,4 +15,4 @@ Target = libfprint
 [Action]
 Description = Re-applying the HONOR ZQC-P fingerprint patch...
 When = PostTransaction
-Exec = /usr/local/lib/honor-zqcp/rebuild.sh fingerprint
+Exec = /usr/local/lib/honor/rebuild.sh fingerprint

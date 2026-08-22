@@ -3,8 +3,8 @@
 | | |
 |---|---|
 | Problem | some fixes live inside files a package update replaces |
-| Fix | pacman hooks that rebuild them automatically |
-| Scope | Arch-like systems only |
+| Fix | package-manager hooks that rebuild them automatically |
+| Scope | Arch (pacman hooks) and Debian/Ubuntu (`/etc/kernel/postinst.d`) |
 
 ```sh
 sudo bash patch/auto-rebuild/install.sh
@@ -21,6 +21,11 @@ sudo bash patch/auto-rebuild/install.sh
 The other fixes need nothing: the ACPI override is a firmware file, the
 mic-mute fixup is a CO-RE BPF object, and the fan module uses DKMS.
 
+**On Debian and Ubuntu only the kernel-module rebuild is hooked.** A libfprint
+upgrade is not a kernel event and there is no equivalent hook directory for it,
+so re-run [`patch/fingerprint/install.sh`](../fingerprint/install.sh) by hand
+after one. The installer says so when it runs there.
+
 Both kernel-module fixes install into `/usr/lib/modules/$KVER/updates/`, which
 `depmod` searches before `kernel/`, so the packaged modules are never
 overwritten. A new kernel simply has no `updates/` entry yet, which is what the
@@ -29,11 +34,11 @@ hook fills in.
 ## What gets installed
 
 ```
-/etc/pacman.d/hooks/95-honor-zqcp-kernel-modules.hook
-/etc/pacman.d/hooks/96-honor-zqcp-libfprint.hook
-/usr/local/lib/honor-zqcp/rebuild.sh     hook dispatcher
-/usr/local/lib/honor-zqcp/deferred.sh    runs outside the transaction
-/etc/honor-zqcp-autorebuild.conf         REPO= and BUILD_USER=
+/etc/pacman.d/hooks/95-honor-kernel-modules.hook
+/etc/pacman.d/hooks/96-honor-libfprint.hook
+/usr/local/lib/honor/rebuild.sh     hook dispatcher
+/usr/local/lib/honor/deferred.sh    runs outside the transaction
+/etc/honor-autorebuild.conf         REPO= and BUILD_USER=
 ```
 
 | Hook | Trigger | Action |
@@ -54,7 +59,7 @@ The deferred work lives in its own script, `deferred.sh`, rather than being
 passed to `systemd-run` as a command line: systemd expands `$VAR` in `ExecStart`
 itself and would consume the script's own loop variables.
 
-Every step logs to `/var/log/honor-zqcp-autorebuild.log`, and the dispatcher
+Every step logs to `/var/log/honor-autorebuild.log`, and the dispatcher
 always exits 0, so a failure reports itself without breaking the transaction.
 
 ## Behaviour worth knowing
@@ -67,7 +72,7 @@ always exits 0, so a failure reports itself without breaking the transaction.
   reported as *skipped* rather than a failure.
 - The repository must stay where it was when the hooks were installed. If you
   move it, re-run `install.sh` or edit `REPO` in
-  `/etc/honor-zqcp-autorebuild.conf`.
+  `/etc/honor-autorebuild.conf`.
 - The rebuild fetches sources from `raw.githubusercontent.com`. Without
   network, it logs the failure and the fix is simply missing until you re-run
   it.
@@ -75,7 +80,7 @@ always exits 0, so a failure reports itself without breaking the transaction.
 ## Trying it without waiting for an update
 
 ```sh
-echo | sudo /usr/local/lib/honor-zqcp/rebuild.sh modules
+echo | sudo /usr/local/lib/honor/rebuild.sh modules
 ```
 
 Empty input means "every installed kernel that has headers".
@@ -84,8 +89,8 @@ Empty input means "every installed kernel that has headers".
 
 ```sh
 sudo rm /etc/pacman.d/hooks/9[56]-honor-zqcp-*.hook \
-        /usr/local/lib/honor-zqcp/rebuild.sh \
-        /etc/honor-zqcp-autorebuild.conf
+        /usr/local/lib/honor/rebuild.sh \
+        /etc/honor-autorebuild.conf
 ```
 
 `uninstall_patch.sh` does this as part of the full revert.
