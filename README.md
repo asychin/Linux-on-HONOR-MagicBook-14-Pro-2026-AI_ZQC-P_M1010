@@ -211,6 +211,11 @@ out. [`patch/README.md`](patch/README.md) is the index.
 
 ## Have a model that is not covered?
 
+**[Issue #11](https://github.com/rs0x29a/Linux-on-HONOR-MagicBook-14-Pro-2026-AI_ZQC-P_M1010/issues/11) is where this is tracked.** It lists where every model
+stands, what a dump has to contain, and which numbers cannot be read off a
+machine and have to be measured on it. Only `ZQC-P` is verified; everything
+else is waiting on somebody who owns one.
+
 One read-only command produces everything needed to write a profile for it:
 
 ```sh

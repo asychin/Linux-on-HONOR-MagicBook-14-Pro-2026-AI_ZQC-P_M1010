@@ -68,7 +68,8 @@ machine, and refuses the rest by name.
 In descending order of how much difference it makes:
 
 1. **Run `tools/collect-hwinfo.sh` and `tools/dump-acpi.sh` on any HONOR
-   MagicBook and attach the result to an issue.** Two read-only commands. A
+   MagicBook and attach the result to [issue #11](https://github.com/rs0x29a/Linux-on-HONOR-MagicBook-14-Pro-2026-AI_ZQC-P_M1010/issues/11), or to a model issue
+   linked from it.** Two read-only commands. A
    single hardware probe was enough to fill in an entire model's inventory
    here. There is still no probe of the reference machine on
    linux-hardware.org, so even that one is worth doing.

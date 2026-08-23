@@ -1,5 +1,8 @@
 blank_issues_enabled: true
 contact_links:
+  - name: Adding support for another MagicBook
+    url: https://github.com/rs0x29a/Linux-on-HONOR-MagicBook-14-Pro-2026-AI_ZQC-P_M1010/issues/11
+    about: The tracking issue. Where every model stands, what a dump needs to contain, and what cannot be answered without the hardware.
   - name: What is known about each model
     url: https://github.com/rs0x29a/Linux-on-HONOR-MagicBook-14-Pro-2026-AI_ZQC-P_M1010/blob/main/docs/hardware/README.md
     about: One page per machine, what works, what does not, and where every claim came from.
