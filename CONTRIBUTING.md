@@ -169,6 +169,9 @@ HONOR_ZQC-P_M1010/
 │   │   ├── measure-floor.sh        #   find the lowest duty the panel renders evenly
 │   │   ├── install.sh              #   extract, patch, initramfs + cmdline
 │   │   └── uninstall.sh
+│   ├── psr-band/                   # PSR2 selective update paints a band under the pointer
+│   │   ├── install.sh              #   set the PSR level on the cmdline, and live
+│   │   └── uninstall.sh
 │   ├── battery/                    # the charge limit the EC quietly ignores
 │   │   ├── honor-battery-threshold.sh
 │   │   ├── honor-battery-threshold.service
@@ -181,6 +184,9 @@ HONOR_ZQC-P_M1010/
 │   ├── cdclk-ptl/                  # boot-time screen corruption on kernels 7.1.6+
 │   │   ├── 0001-drm-i915-cdclk-avoid-spurious-cdclk-sanitization-on-PTL.patch
 │   │   └── install.sh              #   rebuild xe.ko from the distro kernel source
+│   ├── edp-dsc/                    # panel driven at 6 bpc because DSC is never tried
+│   │   ├── 0001-drm-i915-dp-prefer-DSC-over-driving-eDP-below-8-bpc.patch
+│   │   └── install.sh              #   both xe patches build through lib/xe-build.sh
 │   ├── touchpad-edge/              # left-edge slide gesture -> brightness keys
 │   │   ├── honor-tops0102-edge.bpf.c   # HID-BPF device-event hook
 │   │   └── install.sh              #   build + install via udev-hid-bpf

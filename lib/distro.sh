@@ -252,10 +252,20 @@ distro_cmdline_add() {
 }
 
 # distro_cmdline_remove <sed-safe pattern>
+# distro_cmdline_remove <extended-regex>
+#
+# The delimiter is \001, not '|'. It has to be a character that cannot occur in
+# a caller's pattern, and '|' can: an alternation like '(xe|i915)\.enable_psr=.'
+# is exactly the kind of pattern this is for, and with '|' as the delimiter sed
+# fails with "unknown option to `s'" and the parameter silently stays on the
+# command line.
 distro_cmdline_remove() {
-    local pattern="$1" f
+    # Not named 'd'. bash scoping is dynamic, so a short local here shadows the
+    # caller's variable of the same name for the whole call, including inside
+    # distro_cmdline_file.
+    local pattern="$1" f _cmdline_delim=$'\001'
     f="$(distro_cmdline_file)" || return 0
-    sed -i -E "s|[[:space:]]*${pattern}||g" "$f"
+    sed -i -E "s${_cmdline_delim}[[:space:]]*${pattern}${_cmdline_delim}${_cmdline_delim}g" "$f"
 }
 
 distro_bootloader_update() {

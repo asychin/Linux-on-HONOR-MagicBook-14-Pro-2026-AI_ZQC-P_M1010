@@ -145,6 +145,54 @@ _cmdline_case "a shape we do not know" default/grub 'SOMETHING_ELSE=1
 unset -f distro_cmdline_file
 source lib/distro.sh
 
+# lib/xe-build.sh may carry an "is this fix already upstream" hook per patch.
+# The trap is grepping for a string the patch itself adds: then a tree that has
+# just been patched looks like a tree that never needed it, the fix silently
+# leaves the module, and the build still reports success. That happened once.
+section "xe patch obsolescence markers"
+if [[ -r lib/xe-build.sh ]]; then
+    while read -r fn; do
+        fix="${fn#_xe_obsolete_}"; fix="${fix//_/-}"
+        marker=$(sed -n "/^${fn}()/,/^}/p" lib/xe-build.sh \
+                 | sed -n "s/.*grep -q '\([^']*\)'.*/\1/p" | head -1)
+        [[ -n "$marker" ]] || { fail "$fn: cannot find the string it greps for"; continue; }
+        patchfile=$(ls "patch/$fix"/*.patch 2>/dev/null | head -1)
+        [[ -n "$patchfile" ]] || { fail "$fn: no patch file under patch/$fix"; continue; }
+        if grep -E "^\+" "$patchfile" | grep -qF -- "$marker"; then
+            fail "$fn greps for '$marker', which patch/$fix adds itself: a patched tree would look obsolete"
+        else
+            pass "$fn: '$marker' is not introduced by patch/$fix"
+        fi
+    done < <(grep -oE '^_xe_obsolete_[a-z_]+' lib/xe-build.sh)
+else
+    fail "lib/xe-build.sh is missing"
+fi
+
+# distro_cmdline_remove takes an extended regex, and callers legitimately pass
+# an alternation. The delimiter sed is given must therefore not be a character
+# that can appear in one: with '|' as the delimiter, '(xe|i915)\.enable_psr=.'
+# makes sed exit with "unknown option to `s'" and the parameter stays put, which
+# looks exactly like a successful removal from the outside.
+_cmdline_rm_case() { # name pattern must-go must-stay
+    local name="$1" pattern="$2" gone="$3" stay="$4"
+    local d; d="$(mktemp -d)"; mkdir -p "$d/default"
+    printf '%s\n' \
+        'KERNEL_CMDLINE[default]+="root=UUID=abc rw rootflags=subvol=/@ i8042.dumbkbd=1 xe.enable_psr=1"' \
+        'ESP_PATH="/boot"' > "$d/default/limine"
+    distro_cmdline_file() { echo "$d/default/limine"; }
+    distro_cmdline_remove "$pattern" 2>/dev/null
+    if ! grep -qF "$gone" "$d/default/limine" && grep -qF "$stay" "$d/default/limine"; then
+        pass "$name: removed, and $stay survived"
+    else
+        fail "$name: expected '$gone' gone and '$stay' kept, got $(grep -m1 KERNEL_CMDLINE "$d/default/limine")"
+    fi
+    rm -rf "$d"
+}
+_cmdline_rm_case "remove a plain parameter"  'i8042\.dumbkbd=1'            'i8042.dumbkbd=1' 'root=UUID=abc'
+_cmdline_rm_case "remove via an alternation" '(xe|i915)\.enable_psr=[0-9]+' 'xe.enable_psr=1' 'rootflags=subvol=/@'
+unset -f distro_cmdline_file
+source lib/distro.sh
+
 # --- 3 and 4. detection ------------------------------------------------------
 source lib/detect.sh
 

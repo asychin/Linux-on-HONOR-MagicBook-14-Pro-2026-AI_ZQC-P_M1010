@@ -82,12 +82,19 @@ already in the profile, not from a hunch:
 | Recorded fact | Follows |
 |---|---|
 | `platform=pantherlake` | `cdclk-ptl`, `sof-audio` |
+| `panel=oled` on a link that cannot carry 8 bpc, **measured** | `edp-dsc` |
 | `touchscreen_hid=2808:5662`, the FocalTech panel | `micmute` |
 | `panel=oled` | `oled-backlight` |
 | `fingerprint_usb`, **and** a recipe for that id under `patch/fingerprint/sensors/` | `fingerprint` |
 | `ec_fan0` / `ec_fan1` | `fan` |
 | `battery_charge_presets` | `battery` |
 | any of the above builds a module or rebuilds a library | `auto-rebuild` |
+
+`psr-band` is deliberately absent from that table. Nothing in a profile
+predicts it: whether PSR2 selective update is visible on a given panel is a
+property of that panel, and the only honest way to find out is to move the
+pointer across a flat grey window and look. List it once somebody has seen the
+band on that model, not because the machine has an Intel iGPU and an eDP panel.
 
 A recorded `fingerprint_usb` on its own is **not** enough. `27c6:5f10` and
 `10a5:a921` are both real readers on real machines here and neither has a

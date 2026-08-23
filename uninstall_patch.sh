@@ -29,7 +29,7 @@ rm -fv /etc/initcpio/install/acpi_override
 # Debian and Ubuntu: the CPIO handed to GRUB, and its GRUB_EARLY_INITRD entry.
 distro_acpi_override_remove || true
 
-echo "[3/15] Strip acpi_override from the initramfs config and i8042.dumbkbd=1 from the cmdline"
+echo "[3/15] Strip acpi_override from the initramfs config and this repo's parameters from the cmdline"
 if [[ -f /etc/mkinitcpio.conf ]]; then
     sed -i 's/ acpi_override//' /etc/mkinitcpio.conf
     echo "    HOOKS=$(grep -E '^HOOKS=' /etc/mkinitcpio.conf)"
@@ -37,6 +37,9 @@ fi
 
 # Whichever file this distribution keeps the command line in.
 distro_cmdline_remove 'i8042\.dumbkbd=1' || true
+# The PSR level from patch/psr-band. Removing it hands PSR2 selective update
+# back to the driver, which is what a full revert means, band and all.
+distro_cmdline_remove '(xe|i915)\.enable_psr=[0-9]+' || true
 if CMDFILE="$(distro_cmdline_file)"; then
     echo "    $(grep -hE 'CMDLINE|^[^#]' "$CMDFILE" | head -1)"
 fi
@@ -128,16 +131,24 @@ else
     rm -fv /usr/lib/firmware/honor/zqc-p-vbt.bin
 fi
 
-echo "[10/15] Remove the Panther Lake CDCLK xe.ko overlay"
+echo "[10/15] Remove the locally built xe.ko overlay"
+# One module, several patches. There is no partial removal: taking the overlay
+# away reverts every fix that lived inside it, so say which ones those were.
 if [[ -f "/usr/lib/modules/${KVER}/updates/xe.ko.zst" ]]; then
+    if [[ -r /var/lib/honor/xe-module.stamp ]]; then
+        echo "    it carried: $(sed -n 's/^patches=//p' /var/lib/honor/xe-module.stamp)"
+    fi
     rm -fv "/usr/lib/modules/${KVER}/updates/xe.ko.zst"
     rmdir --ignore-fail-on-non-empty "/usr/lib/modules/${KVER}/updates" 2>/dev/null || true
     depmod -a "$KVER" 2>/dev/null || step_failed "depmod -a $KVER failed"
     echo "    back to the packaged module: $(modinfo -k "$KVER" xe | grep -E '^filename:')"
-    echo "    the boot-time display glitch on 7.1.6+ comes back."
+    echo "    the boot-time display glitch on 7.1.6+ comes back, and the panel"
+    echo "    goes back to 6 bits per colour with dithering."
 else
     echo "    not installed"
 fi
+rm -fv /var/lib/honor/xe-module.stamp 2>/dev/null || true
+rmdir --ignore-fail-on-non-empty /var/lib/honor 2>/dev/null || true
 
 # Everything installed at runtime used to carry "zqcp" in its name. In an
 # uninstall a blanket sweep is right: we are removing all of it anyway.

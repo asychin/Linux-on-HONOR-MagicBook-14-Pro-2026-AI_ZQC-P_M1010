@@ -71,7 +71,7 @@ on `linux-cachyos 7.0.8` (Panther Lake-aware) under CachyOS.
 |---|---|---|---|
 | CPU — Intel Core Ultra X9 388H (Panther Lake) | `intel_pstate`, `intel_idle`, `coretemp` | Intel Processor | ✅ |
 | Integrated GPU — Intel Arc B390 | PCI `8086:b080`, `xe` (modern Xe driver) | Intel Arc Graphics | ✅ |
-| Internal panel — EDO 14.55" OLED, 3120x2080 120 Hz | eDP-1, `intel_backlight` (native PWM, 200 Hz, `max_brightness` 704) | Intel Arc Graphics | ✅ *needs this patch* — the VBT declares a 2.4% minimum this panel cannot render evenly, see [`patch/oled-backlight/`](../../patch/oled-backlight/) |
+| Internal panel — EDO 14.55" OLED, 3120x2080 120 Hz | eDP-1, `intel_backlight` (native PWM, 200 Hz, `max_brightness` 704) | Intel Arc Graphics | ✅ *needs two patches* — the VBT declares a 2.4% minimum this panel cannot render evenly ([`patch/oled-backlight/`](../../patch/oled-backlight/)), and PSR2 selective update paints a visible band that follows the pointer ([`patch/psr-band/`](../../patch/psr-band/)). It is also running at 6 bpc, see [below](#the-panel-is-driven-at-6-bits-per-colour) |
 | Intel NPU (AI accelerator) | PCI `8086:b03e`, `intel_vpu` | Intel AI Boost | ✅ |
 | Intel Platform Monitoring Telemetry | PCI `8086:b07d`, `intel_vsec`, `intel_pmc_ssram_telemetry` | Intel PMT | ✅ |
 | Intel Innovation Platform Framework (DTT) | PCI `8086:b01d`, `proc_thermal_pci` | Intel Dynamic Tuning | ✅ |
@@ -243,6 +243,197 @@ Independent reports, all of which agree on the root cause and the fix:
 this machine. Meanwhile a single BCC-N probe was enough to fill in that model's
 entire inventory. Running `hw-probe` here is five minutes and would do more for
 the next owner of this laptop than anything else on this page.
+
+## The panel is driven at 6 bits per colour
+
+Two separate things are wrong with how this panel is driven, and only one of
+them has a fix here.
+
+### The band that follows the pointer
+
+A wide, faint, darker band crosses the whole screen and tracks the mouse
+pointer as it moves up and down. It is PSR2 selective update: the hardware can
+only refresh a *range of scanlines*, never a rectangle, so every partial update
+is full width, and on this OLED the re-sent lines do not come out matching the
+lines the panel is still driving from its own buffer.
+
+Measured by switching PSR mode at run time through
+`/sys/kernel/debug/dri/*/i915_edp_psr_debug`, in this order:
+
+| psr_debug | mode | band | sink error latch |
+|---|---|---|---|
+| 1 | PSR disabled | no | n/a |
+| 3 | PSR1 | no | `0x0` |
+| 0 | PSR2 + selective fetch | **yes** | `0x1 PSR Link CRC error` |
+
+PSR2 was restored last on purpose, and the band came back, which is what makes
+this a cause rather than a coincidence. The fix is `xe.enable_psr=1`; the whole
+trace, with the driver source it rests on, is in
+[`patch/psr-band/README.md`](../../patch/psr-band/README.md).
+
+The driver also logs, once per boot:
+
+```
+xe 0000:00:02.0: [drm] Selective fetch area calculation failed in pipe A
+```
+
+### 6 bpc with dithering, because DSC is off
+
+Understood, measured, and not fixed. The pipe runs at 18 bits per pixel, six
+per colour, with dithering on:
+
+```
+$ sudo cat /sys/kernel/debug/dri/0000:00:02.0/i915_display_info
+	adjusted_mode="3120x2080": 120 900864 3120 3332 3336 3400 2080 2202 2203 2208
+	pipe src=3120x2080+0+0, dither=yes, bpp=18
+	port_clock=540000, lane_count=4
+```
+
+The driver says why itself, with `drm.debug=0x04` set across a modeset:
+
+```
+[CONNECTOR:512:eDP-1] Limiting target display pipe bpp to 30
+    (EDID bpp 30, max requested bpp 36, max platform bpp 36)
+[ENCODER:511:DDI A/PHY A][CRTC:151:pipe A] DP link limits: pixel clock 900864 kHz
+    DSC off max lanes 4 max rate 540000 max pipe_bpp 30
+    min link_bpp 18.0000 max link_bpp 30.0000
+DP lane count 4 clock 540000 bpp input 18 compressed 0.0000 HDR no
+    link rate required 2026944 available 2160000
+[CRTC:151:pipe A] hw max bpp: 30, pipe bpp: 18, dithering: 1
+```
+
+The panel declares 10 bits per colour in its EDID and the platform would go to
+12, so the ceiling is not the panel. It is the link: 2026944 of the 2160000
+available is what 18 bpp costs, and 24 bpp would cost 2702592. There is no
+`Try DSC` line anywhere in that log, because the driver never gets that far.
+Compression is only considered when the uncompressed path fails:
+
+```c
+	dsc_needed = joiner_needs_dsc || intel_dp->force_dsc_en ||
+		     !intel_dp_compute_config_limits(...);
+
+	if (!dsc_needed) {
+		ret = intel_dp_compute_link_config_wide(...);
+		...
+		if (ret || !intel_dp_dotclk_valid(...))
+			dsc_needed = true;
+	}
+```
+
+and the uncompressed path does not fail, because `intel_dp_min_bpp()` lets it
+go down to 6 bpc for RGB. Dropping colour depth to make a mode fit is
+deliberate, and old: it arrived as
+[Dither down to 6bpc if it makes the mode fit](https://patchwork.kernel.org/project/intel-gfx/patch/1311174531-23070-1-git-send-email-ajax@redhat.com/)
+in 2011, when the alternative was no picture at all. On a panel that also
+supports DSC the alternative is no longer that.
+
+#### There is no faster link to be had
+
+The panel was asked directly over `/dev/drm_dp_aux0`, which is the eDP AUX
+channel for this connector:
+
+```
+DPCD 0x000 DPCD_REV       0x14  ->  DP 1.4
+DPCD 0x001 MAX_LINK_RATE  0x14  ->  5.4 Gbps
+DPCD 0x002 MAX_LANE_COUNT 0x84  ->  4 lanes, enhanced framing, no TPS3
+DPCD 0x010 eDP SUPPORTED_LINK_RATES, 16-bit LE, units of 200 kHz:
+           13500 -> 2.70 Gbps        27000 -> 5.40 Gbps        (rest zero)
+```
+
+Two rates, and the higher one is HBR2. There is no HBR3 on this panel, so
+17.28 Gbit/s of payload is the hard ceiling and no configuration reaches 8 bpc
+uncompressed at this pixel clock.
+
+The 60 Hz mode does not help either, which is worth writing down because it
+looks like it should. It is the same pixel clock with the vertical blanking
+doubled, `vtotal` 2208 becomes 4416 and `clock` stays 900864, so the link
+carries exactly the same load and the pipe stays at 18 bpp. Measured, not
+assumed.
+
+#### DSC works on this panel
+
+Forced on through `i915_dsc_fec_support` and committed with a real modeset, at
+the 120 Hz mode that is actually in use:
+
+| | stock | DSC forced |
+|---|---|---|
+| pipe bpp | 18 (6 bpc) | **30 (10 bpc)** |
+| dithering | yes | **no** |
+| link rate required | 2026944 of 2160000 | **900864 of 2160000** |
+
+```
+DP DSC computed with Input Bpp = 30 Compressed Bpp = 8.0000 Slice Count = 4
+```
+
+4 slices of 780x130, block prediction on, line buffer 11 bits, RGB. The link
+was then read back from the panel while compression was live:
+
+```
+DPCD 0x202/0x203 LANE0..3   CR=1 EQ=1 SYM_LOCK=1 on all four lanes
+DPCD 0x204                  INTERLANE_ALIGN_DONE=1
+DPCD 0x210..0x216           SYMBOL_ERROR_COUNT = 0 on all four lanes
+Sink PSR error status       0x0
+```
+
+and the picture was checked by eye: no artefacts, no flicker, correct colours.
+
+The firmware does not object either. `edp_dsc_disable` in VBT block 27
+(`BDB_EDP`) reads `0x0000`, and in fact every byte of that region of the block
+is zero, so no panel type is excluded:
+
+```
+block 40 (BDB_LFP_OPTIONS): panel_type = 2
+block 27 (BDB_EDP), offsets 740..848: all zero
+edp_dsc_disable = 0x0000
+```
+
+So all three parties agree DSC is available and it demonstrably works. The
+driver simply never asks, because 6 bpc satisfied it first.
+
+#### The fix, and what it produces
+
+Measured on the reference unit after the change, at the 120 Hz mode in use:
+
+| | stock | shipped |
+|---|---|---|
+| pipe bpp | 18, six per colour | **30, ten per colour** |
+| dithering | yes | **no** |
+| DSC | `DSC_Enabled: no` | `DSC_Enabled: yes`, `Force_DSC_Enable: no` |
+| link rate required | 2026944 of 2160000 | 900864 of 2160000 |
+| sink PSR error latch | `0x1 PSR Link CRC error` | `0x0` |
+
+`Force_DSC_Enable: no` alongside `DSC_Enabled: yes` is the point: compression is
+being chosen by the driver, not forced through debugfs. The panel's own link
+status agrees, read back over AUX: clock recovery, equalisation and symbol lock
+on all four lanes, interlane alignment done, and zero symbol errors.
+
+`Force_DSC_Enable` lives in debugfs and nowhere else, and there is no module
+parameter for it, so making this stick means changing the driver.
+[`patch/edp-dsc/`](../../patch/edp-dsc/) carries a patch that, on eDP, prefers
+compression over settling below 8 bits per colour, and puts the uncompressed
+result back if the DSC pass fails so it can never turn a working mode into a
+rejected one. It is opt-in, because it rebuilds `xe.ko`.
+
+That module is shared with [`patch/cdclk-ptl/`](../../patch/cdclk-ptl/), so
+both patches are built together by
+[`lib/xe-build.sh`](../../lib/xe-build.sh) and neither installer can silently
+drop the other's change. What went into the installed module is recorded in
+`/var/lib/honor/xe-module.stamp`.
+
+One detail took a second attempt to get right and is worth knowing if anybody
+rebases this. `intel_dp_compute_config_limits()` derives the DSC input depth
+from `crtc_state->pipe_bpp`, which by then holds whatever the uncompressed
+search settled for. Handing that back produced 8 bits per colour instead of 10,
+because 18 clamps up to the DSC minimum of 24 and stops. The patch restores the
+depth the modeset arrived with before computing the DSC limits.
+
+Two things are still unknown and are worth knowing before relying on it.
+Suspend and resume with compression live has not been tested. And under DSC the
+PSR2 selective update region has to align to the DSC slice height rather than
+the panel's own granularity, 130 lines here instead of a handful, which would
+make [the band](#the-panel-is-driven-at-6-bits-per-colour) taller rather than
+smaller; that is moot while PSR is held at PSR1, which this machine needs
+anyway.
 
 ## The keyboard and the Caps Lock LED
 

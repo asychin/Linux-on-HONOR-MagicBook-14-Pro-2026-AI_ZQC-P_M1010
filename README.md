@@ -29,8 +29,10 @@ recognise it. `uninstall_patch.sh` reverts everything.
 | Fingerprint reader, Goodix `27c6:6f94` | works | [`patch/fingerprint/`](patch/fingerprint/) — two-line `libfprint` id patch |
 | Headset microphone, 3.5 mm jack | works | [`patch/headset-mic/`](patch/headset-mic/) — one-line `SND_PCI_QUIRK` for ALC256 |
 | OLED minimum brightness too low, uneven steps | works | [`patch/oled-backlight/`](patch/oled-backlight/) — patched VBT raises the firmware's backlight floor |
+| Faint wide band follows the mouse pointer | works | [`patch/psr-band/`](patch/psr-band/) — PSR2 selective update can only refresh whole scanlines, so every partial update is a full-width band; limits PSR to PSR1, which has none |
 | Touchpad left-edge slide (brightness gesture) | works | [`patch/touchpad-edge/`](patch/touchpad-edge/) — HID-BPF turns the vendor gesture report into brightness keys. The right edge (volume) goes through the EC and works unaided |
 | Screen garbled at boot, kernel 7.1.6 and newer | works, opt-in | [`patch/cdclk-ptl/`](patch/cdclk-ptl/) — rebuilds `xe.ko` with the upstream CDCLK fix Panther Lake needs. Merged to `drm-intel-next` on 2026-08-21, so expect it in Linux 7.3 and then a stable backport |
+| Panel driven at 6 bits per colour, banding on gradients | works, opt-in | [`patch/edp-dsc/`](patch/edp-dsc/) — the link cannot carry 8 bpc and the driver drops colour depth before it will compress; a kernel patch makes it prefer DSC on eDP, with a fallback to the old behaviour |
 | Battery charge limit does nothing | works | [`patch/battery/`](patch/battery/) — the EC only enforces HONOR's own preset pairs; anything else, including what the desktop sets, is stored and ignored |
 | Performance and camera keys do nothing | works | [`patch/hotkey-actions/`](patch/hotkey-actions/) — a small service acts on the keys the desktop ignores |
 | Some Fn keys dead, `Unknown key pressed` in dmesg | works | [`patch/hotkeys/`](patch/hotkeys/) — adds the HONOR codes to the `huawei-wmi` keymap |
@@ -178,7 +180,9 @@ out. [`patch/README.md`](patch/README.md) is the index.
 |---|---|
 | [`acpi-override/`](patch/acpi-override/) | patched SSDT: touchpad, touchscreen, keyboard |
 | [`oled-backlight/`](patch/oled-backlight/) | the panel's firmware minimum is too low to render evenly |
+| [`psr-band/`](patch/psr-band/) | a faint full-width band follows the mouse pointer |
 | [`cdclk-ptl/`](patch/cdclk-ptl/) | garbled screen at boot on kernels 7.1.6 and newer |
+| [`edp-dsc/`](patch/edp-dsc/) | the internal panel is driven at 6 bits per colour |
 | [`battery/`](patch/battery/) | the charge limit the EC silently ignores |
 | [`hotkeys/`](patch/hotkeys/) · [`hotkey-actions/`](patch/hotkey-actions/) | Fn keys that go nowhere, and then are ignored |
 | [`micmute/`](patch/micmute/) · [`headset-mic/`](patch/headset-mic/) · [`sof-audio/`](patch/sof-audio/) | audio |

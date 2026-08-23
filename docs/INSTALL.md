@@ -19,26 +19,27 @@ affected.
 | 2 | Installs `patch/acpi-override/SSDT27_TPD0.aml` into `/usr/lib/firmware/acpi/` and the `acpi_override` mkinitcpio hook |
 | 3 | Adds `acpi_override` to `HOOKS=` in `/etc/mkinitcpio.conf`, right after `autodetect` |
 | 4 | Appends `i8042.dumbkbd=1` to the kernel command line, wherever this distribution keeps it: `/etc/default/limine`, `/etc/default/grub` or `/etc/kernel/cmdline`. On Linux 7.2 and 7.1.10 the upstream `atkbd` quirk makes it unnecessary, and the step says so |
-| 5 | Runs `patch/oled-backlight/install.sh` — patched VBT, `FILES=` entry and `xe.vbt_firmware=` on the cmdline |
-| 6 | Runs `patch/cdclk-ptl/install.sh` — rebuilds `xe.ko` with the Panther Lake cdclk fix, into the `updates/` overlay. Only with `WITH_CDCLK=1` |
-| 7 | Regenerates the initramfs and the bootloader config, once, after all the config edits |
-| 8 | Runs `patch/headset-mic/install.sh` — rebuilds `snd-hda-codec-alc269.ko` with the ALC256 quirk for PCI SSID `1ee7:209d` |
-| 9 | Runs `patch/sof-audio/install.sh` — builds `snd-sof.ko` with the IPC4 backport into the `updates/` overlay |
-| 10 | Runs `patch/micmute/install.sh` — builds and installs the HID-BPF descriptor fixup through `udev-hid-bpf` |
-| 11 | Runs `patch/touchpad-edge/install.sh` — HID-BPF program for the left-edge brightness gesture |
-| 12 | Runs `patch/fan/install.sh` — `honor-ec-sensors`, EC fan tachometers, through DKMS |
-| 13 | Runs `patch/fingerprint/install.sh` — rebuilds `libfprint` with the Goodix `27c6:6f94` id |
-| 14 | Runs `patch/battery/install.sh` — arms a charge preset the EC actually enforces, and keeps it armed across boots |
-| 15 | Runs `patch/hotkeys/install.sh` — rebuilds `huawei-wmi` with the HONOR hotkey codes, plus a hwdb entry for the atkbd noise |
-| 16 | Runs `patch/hotkey-actions/install.sh` — the performance key cycles power profiles, the camera key switches the webcam off |
-| 17 | Runs `patch/auto-rebuild/install.sh` — package-manager hooks that keep steps 8, 9 and 13 applied across package updates |
+| 5 | Runs `patch/psr-band/install.sh` — puts `xe.enable_psr=1` on the cmdline so Panel Self Refresh stops at PSR1, and applies it to the running session too |
+| 6 | Runs `patch/oled-backlight/install.sh` — patched VBT, `FILES=` entry and `xe.vbt_firmware=` on the cmdline |
+| 7 | Rebuilds `xe.ko` into the `updates/` overlay through `lib/xe-build.sh`, carrying every patch that lives inside that module: the Panther Lake cdclk fix (`WITH_CDCLK=1`, `patch/cdclk-ptl/install.sh`) and the eDP DSC preference (`WITH_DSC=1`, `patch/edp-dsc/install.sh`). Skipped entirely when neither is asked for |
+| 8 | Regenerates the initramfs and the bootloader config, once, after all the config edits |
+| 9 | Runs `patch/headset-mic/install.sh` — rebuilds `snd-hda-codec-alc269.ko` with the ALC256 quirk for PCI SSID `1ee7:209d` |
+| 10 | Runs `patch/sof-audio/install.sh` — builds `snd-sof.ko` with the IPC4 backport into the `updates/` overlay |
+| 11 | Runs `patch/micmute/install.sh` — builds and installs the HID-BPF descriptor fixup through `udev-hid-bpf` |
+| 12 | Runs `patch/touchpad-edge/install.sh` — HID-BPF program for the left-edge brightness gesture |
+| 13 | Runs `patch/fan/install.sh` — `honor-ec-sensors`, EC fan tachometers, through DKMS |
+| 14 | Runs `patch/fingerprint/install.sh` — rebuilds `libfprint` with the Goodix `27c6:6f94` id |
+| 15 | Runs `patch/battery/install.sh` — arms a charge preset the EC actually enforces, and keeps it armed across boots |
+| 16 | Runs `patch/hotkeys/install.sh` — rebuilds `huawei-wmi` with the HONOR hotkey codes, plus a hwdb entry for the atkbd noise |
+| 17 | Runs `patch/hotkey-actions/install.sh` — the performance key cycles power profiles, the camera key switches the webcam off |
+| 18 | Runs `patch/auto-rebuild/install.sh` — package-manager hooks that keep steps 9, 10 and 14 applied across package updates |
 
-Steps 8 and 9 are skipped with a warning if kernel lockdown or
+Steps 9 and 10 are skipped with a warning if kernel lockdown or
 `module.sig_enforce=1` would block an unsigned module. Step 2 warns about
 lockdown too, for a different reason: it silently refuses ACPI table overrides,
 and a machine that boots without a touchpad and without an obvious error is
-worse than one that refuses loudly. Step 17 is skipped where no kernel-update
-hook mechanism is known. Step 6 runs before the initramfs rebuild because the
+worse than one that refuses loudly. Step 18 is skipped where no kernel-update
+hook mechanism is known. Step 7 runs before the initramfs rebuild because the
 early-KMS copy of `xe.ko` is the one that lights the panel.
 
 

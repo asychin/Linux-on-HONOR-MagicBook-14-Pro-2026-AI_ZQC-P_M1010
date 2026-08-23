@@ -26,8 +26,10 @@ on several of them the honest answer is that nothing here applies at all. See
 | Fingerprint reader, Goodix `27c6:6f94` | works | [`fingerprint/`](fingerprint/) — two-line `libfprint` id patch |
 | Headset microphone, 3.5 mm jack | works | [`headset-mic/`](headset-mic/) — one-line `SND_PCI_QUIRK` for ALC256 |
 | OLED minimum brightness too low, uneven steps | works | [`oled-backlight/`](oled-backlight/) — patched VBT raises the firmware's backlight floor |
+| Faint wide band follows the mouse pointer | works | [`psr-band/`](psr-band/) — PSR2 selective update can only refresh whole scanlines, so every partial update is a full-width band; limits PSR to PSR1, which has none |
 | Touchpad left-edge slide does nothing | works | [`touchpad-edge/`](touchpad-edge/) — HID-BPF turns the vendor gesture report into brightness keys |
 | Garbled screen at boot on 7.1.6+ | works, opt-in | [`cdclk-ptl/`](cdclk-ptl/) — rebuilds `xe.ko` with the upstream CDCLK fix for Panther Lake. Merged to `drm-intel-next` 2026-08-21, so expect it in 7.3 |
+| Panel driven at 6 bits per colour, banding on gradients | works, opt-in | [`edp-dsc/`](edp-dsc/) — the link cannot carry 8 bpc and the driver drops colour depth before it will compress; a kernel patch makes it prefer DSC on eDP, with a fallback to the old behaviour |
 | Battery charge limit ignored | works | [`battery/`](battery/) — the EC arms only for HONOR's preset pairs; everything else is stored and silently dropped |
 | Performance and camera keys inert | works | [`hotkey-actions/`](hotkey-actions/) — acts on the keys no desktop binds |
 | Fn keys dead, `Unknown key pressed` | works | [`hotkeys/`](hotkeys/) — HONOR codes added to the `huawei-wmi` keymap |
