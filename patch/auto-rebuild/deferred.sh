@@ -36,6 +36,29 @@ modules)
             w "${k}: no kernel headers, skipped"
             continue
         fi
+        # xe.ko is one module shared by several patches, and the overlay is
+        # per kernel version, so a kernel update leaves the new kernel running
+        # the stock module with every one of them gone. It is rebuilt only if
+        # it was installed: the stamp records which patches went in, and
+        # XE_ONLY reproduces exactly that set rather than whatever the profile
+        # would ask for today. The first installer does the build; the rest see
+        # the stamp and return.
+        if [[ -r /var/lib/honor/xe-module.stamp ]]; then
+            xe_want=$(sed -n 's/^wanted=//p' /var/lib/honor/xe-module.stamp)
+            for fix in ${xe_want:-}; do
+                [[ -x "${REPO}/patch/${fix}/install.sh" || -r "${REPO}/patch/${fix}/install.sh" ]] || continue
+                rc=0
+                XE_ONLY="$xe_want" KVER="$k" bash "${REPO}/patch/${fix}/install.sh" >>"$LOG" 2>&1 || rc=$?
+                case "$rc" in
+                    0) w "${fix} ${k}: ok" ;;
+                    3) w "${fix} ${k}: not applicable to this kernel, skipped" ;;
+                    *) w "${fix} ${k}: FAILED (rc=${rc}), run: sudo XE_ONLY='${xe_want}' KVER=${k} bash ${REPO}/patch/${fix}/install.sh" ;;
+                esac
+            done
+        else
+            w "no /var/lib/honor/xe-module.stamp, so no xe.ko overlay to rebuild"
+        fi
+
         # hotkeys builds a module overlay too, so a kernel update drops it
         # just like the two audio ones.
         for fix in headset-mic sof-audio hotkeys; do

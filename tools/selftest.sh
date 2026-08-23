@@ -145,6 +145,43 @@ _cmdline_case "a shape we do not know" default/grub 'SOMETHING_ELSE=1
 unset -f distro_cmdline_file
 source lib/distro.sh
 
+# A kernel update replaces /usr/lib/modules/<kver>/, so anything this
+# repository put in that kernel's updates/ overlay is gone and the stock module
+# is back. patch/auto-rebuild/ exists to put it back, and a fix that installs a
+# module without being in that path is a fix that silently disappears on the
+# next kernel. That is exactly what happened to the xe.ko patches.
+section "module fixes survive a kernel update"
+_covered() { # $1 = fix name
+    grep -q -- "$1" patch/auto-rebuild/deferred.sh && return 0
+    # The xe patches are named at run time from the stamp rather than literally.
+    if grep -q "^\s*\[$1\]=" lib/xe-build.sh \
+       && grep -q 'xe-module.stamp' patch/auto-rebuild/deferred.sh; then
+        return 0
+    fi
+    return 1
+}
+for d in patch/*/; do
+    n="$(basename "$d")"
+    [[ -f "$d/install.sh" ]] || continue
+    # Does this fix put a module into the per-kernel overlay, directly or
+    # through the shared builder?
+    # Three ways an installer can land a module in the per-kernel tree: write
+    # the overlay path itself, go through distro_module_install, or delegate to
+    # the shared xe builder. Matching only one of them is how this check would
+    # quietly stop covering things.
+    installs_module=0
+    grep -qE '/updates|distro_module_install|lib/xe-build\.sh' "$d/install.sh" && installs_module=1
+    (( installs_module )) || continue
+    # DKMS does its own rebuild on kernel install, so it needs nothing here.
+    if grep -q 'dkms' "$d/install.sh"; then
+        pass "patch/$n: installs through DKMS, which rebuilds itself"
+    elif _covered "$n"; then
+        pass "patch/$n: rebuilt after a kernel update"
+    else
+        fail "patch/$n installs a module overlay that patch/auto-rebuild/ never rebuilds"
+    fi
+done
+
 # lib/xe-build.sh may carry an "is this fix already upstream" hook per patch.
 # The trap is grepping for a string the patch itself adds: then a tree that has
 # just been patched looks like a tree that never needed it, the fix silently

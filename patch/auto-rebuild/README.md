@@ -16,7 +16,26 @@ sudo bash patch/auto-rebuild/install.sh
 |---|---|---|
 | [`headset-mic/`](../headset-mic/) | `snd-hda-codec-alc269.ko` | any kernel package update |
 | [`sof-audio/`](../sof-audio/) | `snd-sof.ko` | any kernel package update |
+| [`hotkeys/`](../hotkeys/) | `huawei-wmi.ko` | any kernel package update |
+| [`cdclk-ptl/`](../cdclk-ptl/) and [`edp-dsc/`](../edp-dsc/) | `xe.ko` | any kernel package update, and only if one was installed |
 | [`fingerprint/`](../fingerprint/) | `libfprint` | any libfprint update |
+
+`xe.ko` is one module with more than one patch in it, so it is rebuilt as a
+set. Which patches were in it is read back from
+`/var/lib/honor/xe-module.stamp` and reproduced exactly, through `XE_ONLY`,
+rather than rebuilding whatever the profile would ask for today: a machine that
+deliberately took one of the two should not silently acquire the other at the
+next kernel update. No stamp means nothing was installed and nothing is built.
+
+Fixes that are **not** here need nothing. `fan/` goes through DKMS, which does
+its own rebuild when a kernel is installed. `micmute/` and `touchpad-edge/` are
+HID-BPF programs loaded by `udev-hid-bpf` from a path that is not per kernel.
+`acpi-override/`, `oled-backlight/`, `psr-band/`, `battery/` and
+`hotkey-actions/` install firmware, kernel parameters, udev rules or units, and
+a kernel update does not touch any of those. `tools/selftest.sh` checks that
+every fix which does install into a kernel's `updates/` overlay is listed
+above, because the failure mode is silent: the new kernel simply boots with the
+stock module and everything looks normal until you notice it does not work.
 
 The other fixes need nothing: the ACPI override is a firmware file, the
 mic-mute fixup is a CO-RE BPF object, and the fan module uses DKMS.
@@ -43,7 +62,7 @@ hook fills in.
 
 | Hook | Trigger | Action |
 |---|---|---|
-| `95-…-kernel-modules` | any `usr/lib/modules/*/vmlinuz` installed or upgraded | rebuilds `headset-mic` and `sof-audio` for each kernel named in the transaction, in `PostTransaction` |
+| `95-…-kernel-modules` | any `usr/lib/modules/*/vmlinuz` installed or upgraded | rebuilds `headset-mic`, `sof-audio`, `hotkeys` and the `xe.ko` set for each kernel named in the transaction, in `PostTransaction` |
 | `96-…-libfprint` | `libfprint` installed or upgraded | re-applies the fingerprint patch |
 
 Neither rebuild runs inside the transaction. Both are handed to a transient
