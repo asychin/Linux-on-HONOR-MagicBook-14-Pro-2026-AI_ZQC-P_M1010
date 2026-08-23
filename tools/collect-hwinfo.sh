@@ -105,6 +105,100 @@ for c in /sys/class/drm/*/edid; do
     cp "$c" "${WORK}/edid-${conn}.bin" 2>/dev/null || true
 done
 
+# --- 3b. display link state ---------------------------------------------------
+# Everything needed to answer "why does this panel look like that" without a
+# second round trip. Two problems on the reference machine were diagnosed
+# entirely from these nodes: a full-width band following the mouse pointer,
+# which was PSR2 selective update, and a 10-bit panel driven at 6 bits per
+# colour, which was the link running out of bandwidth with DSC never tried.
+#
+# All of it is read-only and none of it identifies anybody. debugfs has to be
+# mounted and this has to be root, which it already is.
+section "display: module parameters"
+for m in xe i915; do
+    [[ -d "/sys/module/$m/parameters" ]] || continue
+    printf -- '--- %s\n' "$m" >> "$REPORT"
+    for f in "/sys/module/$m/parameters/"*; do
+        [[ -r "$f" ]] || continue
+        printf '%-28s %s\n' "$(basename "$f")" "$(cat "$f" 2>/dev/null || true)" >> "$REPORT"
+    done
+done
+
+DRI_DIRS=()
+for d in /sys/kernel/debug/dri/*; do
+    [[ -d "$d" ]] || continue
+    # debugfs exposes both a PCI-address directory and numeric aliases for the
+    # same device. One of them is enough.
+    [[ "$(basename "$d")" == *:*:* ]] && DRI_DIRS+=("$d")
+done
+if (( ${#DRI_DIRS[@]} == 0 )); then
+    section "display: debugfs"
+    echo "no /sys/kernel/debug/dri/<pci-address>; is debugfs mounted?" >> "$REPORT"
+fi
+
+for d in "${DRI_DIRS[@]}"; do
+    section "display: pipes and planes ($(basename "$d"))"
+    if [[ -r "$d/i915_display_info" ]]; then
+        cat "$d/i915_display_info" >> "$REPORT" 2>/dev/null || true
+    else
+        echo "no i915_display_info" >> "$REPORT"
+    fi
+
+    section "display: framebuffer compression ($(basename "$d"))"
+    cat "$d/i915_fbc_status" >> "$REPORT" 2>/dev/null || echo "not present" >> "$REPORT"
+
+    for c in "$d"/*/; do
+        conn="$(basename "$c")"
+        # Only connector directories have these; skip crtc-*, client-* and so on.
+        [[ -r "${c}i915_psr_status" || -r "${c}i915_dsc_fec_support" ]] || continue
+        section "display: $conn"
+        for n in i915_psr_status i915_psr_sink_status \
+                 i915_dsc_fec_support i915_dsc_bpc i915_dsc_output_format \
+                 i915_dsc_fractional_bpp output_bpc intel_force_link_bpp \
+                 i915_dp_max_link_rate i915_dp_max_lane_count \
+                 i915_dp_force_link_rate i915_dp_force_lane_count \
+                 i915_dp_link_retrain_disabled vrr_range \
+                 i915_edp_lobf_info i915_panel_timings i915_lpsp_capability; do
+            [[ -r "${c}${n}" ]] || continue
+            printf -- '--- %s\n' "$n" >> "$REPORT"
+            cat "${c}${n}" >> "$REPORT" 2>/dev/null || true
+        done
+    done
+done
+
+# The panel's own answers, rather than the driver's summary of them. These are
+# what settle whether a faster link exists and whether compression is possible:
+# the driver can only ever report what it decided, and the four blocks below are
+# where that decision comes from.
+section "display: DPCD"
+if compgen -G '/dev/drm_dp_aux*' >/dev/null; then
+    for aux in /dev/drm_dp_aux*; do
+        n="$(basename "$aux")"
+        conn="$(basename "$(readlink -f "/sys/class/drm_dp_aux_dev/$n/device" 2>/dev/null)" 2>/dev/null || echo unknown)"
+        printf -- '--- %s (%s)\n' "$n" "$conn" >> "$REPORT"
+        # 0x000 receiver caps, 0x010 the eDP supported-link-rates table,
+        # 0x060 DSC capability, 0x200 link and sink status including the
+        # per-lane symbol error counters.
+        for range in "0:16:0x000 receiver capability" \
+                     "16:16:0x010 eDP supported link rates" \
+                     "96:16:0x060 DSC capability" \
+                     "512:32:0x200 link and sink status"; do
+            off="${range%%:*}"; rest="${range#*:}"
+            len="${rest%%:*}"; label="${rest#*:}"
+            printf '%s\n' "$label" >> "$REPORT"
+            if have xxd; then
+                dd if="$aux" bs=1 skip="$off" count="$len" status=none 2>/dev/null \
+                    | xxd -g1 >> "$REPORT" || echo "  unreadable" >> "$REPORT"
+            else
+                dd if="$aux" bs=1 skip="$off" count="$len" status=none 2>/dev/null \
+                    | od -An -tx1 >> "$REPORT" || echo "  unreadable" >> "$REPORT"
+            fi
+        done
+    done
+else
+    echo "no /dev/drm_dp_aux*; CONFIG_DRM_DISPLAY_DP_AUX_CHARDEV is not enabled" >> "$REPORT"
+fi
+
 # --- 4. firmware --------------------------------------------------------------
 # Not just the file names. What identifies a table is its OEM table id and its
 # contents, and the ACPI override is decided by exactly that: if your I2C_DEVT
