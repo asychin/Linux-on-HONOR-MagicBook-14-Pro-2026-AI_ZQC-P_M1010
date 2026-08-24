@@ -103,6 +103,11 @@ xe_build_install() {
     local caller="$1"
     local KVER="${KVER:-$(uname -r)}"
     local JOBS="${JOBS:-$(nproc)}"
+    # cdclk-ptl and edp-dsc are two doors into this one function, the work
+    # directory below is a fixed path, and both write the same xe.ko. The
+    # per-fix lock in honor_gate does not cover that, because the two runs hold
+    # different fix locks.
+    honor_lock xe-module
     local WORKDIR="${WORKDIR:-/var/tmp/honor-xe}"
     local KEEP_SRC="${KEEP_SRC:-0}"
     local REGEN="${REGEN:-1}"
@@ -314,4 +319,45 @@ xe_build_install() {
         cd /
         rm -rf "${WORKDIR:?}/${SRCDIR:?}"
     fi
+}
+
+# xe_uninstall <fix>
+#
+# Removes the locally built xe.ko overlay. There is no partial removal: the
+# overlay is one module carrying whichever patches were asked for, so taking it
+# away reverts all of them. It says which, from the stamp, rather than leaving
+# somebody to find out at the next boot.
+#
+# Called from patch/cdclk-ptl/uninstall.sh and patch/edp-dsc/uninstall.sh, which
+# are two doors into the same room.
+xe_uninstall() {
+    local fix="${1:-}" kver="${KVER:-$(uname -r)}" moddir carried=""
+    moddir="/usr/lib/modules/${kver}"
+    [[ -d "$moddir" ]] || moddir="/lib/modules/${kver}"
+
+    if [[ -r /var/lib/honor/xe-module.stamp ]]; then
+        carried="$(sed -n 's/^patches=//p' /var/lib/honor/xe-module.stamp)"
+    fi
+
+    if [[ ! -f "${moddir}/updates/xe.ko.zst" && ! -f "${moddir}/updates/xe.ko" ]]; then
+        echo "    no locally built xe.ko for ${kver}"
+        rm -f /var/lib/honor/xe-module.stamp 2>/dev/null || true
+        rmdir --ignore-fail-on-non-empty /var/lib/honor 2>/dev/null || true
+        return 0
+    fi
+
+    if [[ -n "$carried" && -n "$fix" && "$carried" != "$fix" ]]; then
+        printf '    the overlay carries: %s\n' "$carried"
+        printf '    all of it goes, not just %s. To keep the rest, re-run its\n' "$fix"
+        printf '    installer afterwards with XE_SKIP=%s.\n' "$fix"
+    elif [[ -n "$carried" ]]; then
+        printf '    it carried: %s\n' "$carried"
+    fi
+
+    rm -fv "${moddir}/updates/xe.ko.zst" "${moddir}/updates/xe.ko" 2>/dev/null
+    rmdir --ignore-fail-on-non-empty "${moddir}/updates" 2>/dev/null || true
+    depmod -a "$kver" 2>/dev/null || true
+    rm -f /var/lib/honor/xe-module.stamp 2>/dev/null || true
+    rmdir --ignore-fail-on-non-empty /var/lib/honor 2>/dev/null || true
+    echo "    back to the packaged module: $(modinfo -k "$kver" xe 2>/dev/null | grep -E '^filename:')"
 }

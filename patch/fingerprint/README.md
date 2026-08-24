@@ -109,6 +109,27 @@ Device at /net/reactivated/Fprint/Device/0
 ... Goodix MOC Fingerprint Sensor
 ```
 
+## It used to build itself twice
+
+This script runs `pacman -S --needed` for its build dependencies. The patched
+`libfprint` it produced last time is in that dependency closure, so pacman lists
+`libfprint` as a target of the transaction, so
+[`../auto-rebuild/`](../auto-rebuild/)'s `96-honor-libfprint.hook` fires, so
+`rebuild.sh` defers **a second copy of this script**. Two `makepkg` runs then
+raced in one build directory, and the one that lost printed
+
+```
+==> makepkg failed — run it by hand in ~/.cache/honor-libfprint-build to see why
+```
+
+on a machine whose `libfprint` had in fact just been patched correctly by the
+other one. The failure was in the report, not in the result, which is the worst
+shape a bug can take.
+
+It now takes `/var/lock/honor-fingerprint.lock` before doing anything. Whichever
+run gets there first does the work; the other says so and exits. The end state
+is the same and it is reached once.
+
 ## More than one sensor
 
 HONOR ships different fingerprint readers in different markets under the same
@@ -121,6 +142,12 @@ sensors/
 ├── 10a5-9924-fpcmoc/          FPC, global FMB-P
 └── 1c7a-05aa-egismoc-sdcp/    EgisTec ET171, Chinese units of both
 ```
+
+`recipe_find` and `recipe_load` in [`../../lib/gate.sh`](../../lib/gate.sh) do
+the lookup, and they are shared with the other fixes that are a family rather
+than a single fix: [`../micmute/touchscreens/`](../micmute/) and
+[`../touchpad-edge/touchpads/`](../touchpad-edge/) are laid out and read the same
+way.
 
 Each carries a `recipe.conf` saying which driver, which patches, which
 libfprint versions the patches were checked against, where the work came from,

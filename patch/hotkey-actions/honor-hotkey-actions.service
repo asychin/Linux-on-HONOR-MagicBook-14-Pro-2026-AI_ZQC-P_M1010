@@ -1,6 +1,6 @@
 [Unit]
 Description=Act on the HONOR hotkeys the desktop ignores
-Documentation=file:/usr/local/share/doc/honor/hotkey-actions.md
+Documentation=file:/usr/local/lib/honor/honor-hotkey-actions.py
 After=multi-user.target power-profiles-daemon.service
 Wants=power-profiles-daemon.service
 

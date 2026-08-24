@@ -215,3 +215,26 @@ changes, so no re-apply service is needed here.
 ```sh
 sudo udev-hid-bpf list-loaded | grep honor_tops0102
 ```
+
+## Layout: one program per touchpad
+
+```
+patch/touchpad-edge/
+    install.sh
+    touchpads/
+        27c6-0f9a-goodix-tops0102/
+            recipe.conf
+            honor-tops0102-edge.bpf.c
+```
+
+The gesture arrives on a vendor collection whose byte offsets belong to one
+chip, so the program cannot be pointed at a different touchpad by widening a
+match. The layout is the same as [`../micmute/touchscreens/`](../micmute/) and
+[`../fingerprint/sensors/`](../fingerprint/sensors/), and so is the rule: the
+installer takes `touchpad_hid` from the board section of the device profile,
+confirms it on the HID bus, and selects the directory named after the id it
+found.
+
+Adding one is the same four steps as in
+[`../micmute/README.md`](../micmute/README.md), with the file named
+`honor-<chip>-edge.bpf.c`.

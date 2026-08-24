@@ -14,6 +14,9 @@ OUT="${1:-oem_acpi}"
 mkdir -p "$OUT" && cd "$OUT"
 
 echo "[1/3] acpidump → acpi.dump"
+# The redirect runs as the invoking user and writes into the working
+# directory, which is the intent: only acpidump itself needs root.
+# shellcheck disable=SC2024
 sudo acpidump > acpi.dump
 
 echo "[2/3] acpixtract → *.dat"

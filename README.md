@@ -1,12 +1,13 @@
-# Linux on the HONOR MagicBook Pro
+# Linux on the HONOR MagicBook
 
-Fixes that make HONOR MagicBook Pro laptops usable under Linux: a patched ACPI
+Fixes that make HONOR MagicBook laptops usable under Linux: a patched ACPI
 table for the touchpad and touchscreen, kernel-module quirks for audio and
 sensors, HID-BPF programs for the touchpad gestures, a working battery charge
 limit, and the Fn keys.
 
-Built and verified on a **MagicBook Pro 14 2026 (`ZQC-P`, M1010)**. Thirteen
-further profiles are recognised: the rest of the Pro line, and six machines from
+Built and verified on a **MagicBook Pro 14 2026 (`ZQC-P`, board M1010)**.
+Sixteen further board revisions are recognised and none of them enabled: the
+rest of the Pro line, a second ZQC-P revision, and six machines from
 the other MagicBook lines that share a platform or a part. See
 [Models](#models) and [docs/hardware/](docs/hardware/).
 
@@ -53,22 +54,50 @@ the codec is on HDA and unaffected. See
 
 ## Models
 
-| Model | Machine | Platform | Profile |
-|---|---|---|---|
-| `ZQC-P` | MagicBook Pro 14 2026 (AI) | Panther Lake | **verified**, this is the reference unit |
-| `XWC-P` | MagicBook Pro 16 2026 | Panther Lake | **reported** — and it ships the same ACPI table as ZQC-P, so the touchpad fix applies |
-| `FMB-P` | MagicBook Pro 14 2025 | Arrow Lake | **reported** — from [colorcube's repo](https://github.com/colorcube/Linux-on-Honor-Magicbook-14-Pro) and 10 hardware probes |
-| `FMB-PM` | MagicBook Pro 14 2025 Geek Edition | **Meteor Lake** | **reported** — from [sledeil's touchpad fix](https://github.com/sledeil/honor-fmb-pm-linux-touchpad-fix) |
-| `DRB-P` | MagicBook Pro 16 2025 | Arrow Lake | draft |
-| `DRB-P` | MagicBook Pro 16 HUNTER 2025, RTX 5070/5060 | Arrow Lake | **probed**, iGPU side only |
-| `DRA-XX` | MagicBook Pro 16 2024 | Meteor Lake | **probed** |
-| `DRA-XX` | MagicBook Pro 16 HUNTER 2024, RTX 4060 | Meteor Lake | **probed**, iGPU side only |
-| `BCC-N` | MagicBook 14 2026 | Panther Lake | **probed** — same platform, same ACPI fault |
-| `MRA-XXX` | MagicBook Art 14 2024 | Meteor Lake | **probed** — same touchscreen, so the mic-mute fix applies |
-| `MRB-XXX` | MagicBook Art 14 2025 | Arrow Lake | **probed** — the same |
-| `FRB-X` | MagicBook X14 Plus 2025 | Raptor Lake | **probed** — nothing here applies |
-| `GLO-GXXX` | MagicBook 14 2023 | Raptor Lake | **probed** — nothing here applies |
-| `FMI-XX` | MagicBook X14 Plus 2024 | AMD | draft — listed for the fan interface it shares with ZQC-P |
+Trust is per **board revision**, not per model. HONOR ships one product code as
+several machines: `ZQC-P` is board `M1010` with a Core Ultra X9 388H here and
+board `M1050` with a Core Ultra 5 338H in
+[issue #1](https://github.com/rs0x29a/Linux-on-HONOR-MagicBook-14-Pro-2026-AI_ZQC-P_M1010/issues/1),
+and `FMB-P` is five revisions across three SKUs. So a profile has one section
+per revision, each with its own status, and a revision nobody has measured never
+inherits another one's.
+
+One row per board revision, because that is the unit anybody measured.
+
+| Model | Board | Machine | Platform | Profile | Fixes enabled |
+|---|---|---|---|---|---|
+| `ZQC-P` | `M1010` | MagicBook Pro 14 2026 (AI), Ultra X9 388H | Panther Lake | **verified**, the reference unit | all 15 |
+| `ZQC-P` | `M1050` | the same, Ultra 5 338H, Arc B370 | Panther Lake | **reported** — issues 1, 8, 9 | 9 listed, 6 run |
+| `XWC-P` | `M1110` | MagicBook Pro 16 2026, Ultra 5 338H | Panther Lake | **reported** — Manjaro 187347, phreer | none yet |
+| `XWC-P` | `M1120` | MagicBook Pro 16 2026 | Panther Lake | **reported** — Manjaro 187526 | none yet |
+| `FMB-P` | `M1010` `M1020` `M1030` `M1070` `M1090` | MagicBook Pro 14 2025 | Arrow Lake | **probed**, five separate sections — 10 probes | none yet |
+| `FMB-PM` | `M1030` | MagicBook Pro 14 2025 Geek Edition | **Meteor Lake** | **reported** — [sledeil](https://github.com/sledeil/honor-fmb-pm-linux-touchpad-fix) | none yet |
+| `DRB-P` | unknown | MagicBook Pro 16 2025 | Arrow Lake | draft, no probe exists | none yet |
+| `DRB-P` | `M1020` | MagicBook Pro 16 HUNTER 2025, RTX 5070/5060 | Arrow Lake | **probed**, iGPU side only | none yet |
+| `DRA-XX` | `M1020` | MagicBook Pro 16 2024, Ultra 5 125H | Meteor Lake | **probed** | none yet |
+| `DRA-XX` | `M1030` | MagicBook Pro 16 HUNTER 2024, Ultra 5 125H | Meteor Lake | **probed**, iGPU side only | none yet |
+| `DRA-XX` | `M1040` | MagicBook Pro 16 HUNTER 2024, Ultra 7 155H | Meteor Lake | **probed**, iGPU side only | none yet |
+| `BCC-N` | `M1070` | MagicBook 14 2026 | Panther Lake | **probed** — same platform, same ACPI fault | none yet |
+| `MRA-XXX` | `M1040` | MagicBook Art 14 2024 | Meteor Lake | **probed** | none yet |
+| `MRB-XXX` | `M1090` | MagicBook Art 14 2025 | Arrow Lake | **probed** | none yet |
+| `FRB-X` | `M1050` | MagicBook X14 Plus 2025 | Raptor Lake | **probed** | none yet |
+| `GLO-GXXX` | `M1010` | MagicBook 14 2023 | Raptor Lake | **probed** | none yet |
+| `FMI-XX` | `M1040` | MagicBook X14 Plus 2024 | AMD | **probed** | none yet |
+
+**"none yet" is not an oversight.** A profile lists a fix when somebody has run
+it on that board and said what happened, and not before. Most of the data in
+these profiles came from hardware probe databases and other people's
+repositories: it says what is in the machine, not that anything was ever
+installed on it. Until somebody reports back, the profile's job is to recognise
+the machine and decline, which is the useful thing it can honestly do.
+
+`ZQC-P` `M1050` is the one exception so far, and shows what a report earns. Its
+owner posted the input-device listing that contains the phantom key this
+repository fixes, opened the issue about the garbled boot screen, and found and
+confirmed the fingerprint solution. Nine fixes are listed on the strength of
+that; the six tier A ones run, and `fan`, `battery` and `hotkeys` refuse by name
+until somebody marks that board verified, because they carry numbers measured on
+`M1010`.
 
 Four words, in decreasing order of how much anybody actually knows:
 **verified** means the fixes were run on that machine here; **reported** means
@@ -77,6 +106,9 @@ somebody ran something on one and wrote it down, in another project;
 nobody has tried a single fix; **draft** means the model is recognised and its
 platform is known, and nothing else. Nobody working on this repository owns any
 of these machines except the reference unit.
+
+A board revision that appears in none of these rows is not refused either: it
+keeps the product identity, runs as `probed`, and every fix declines by name.
 
 `DRA-XX` and `GLO-GXXX` are the literal strings HONOR's firmware reports,
 whatever the marketing code on the box was: there is no `DRA-54`, `DRA-56` or
@@ -139,16 +171,19 @@ Each fix installer does the same check on its own, so running
 subsystem id, the backlight floor, come out of the profile rather than being
 written into the scripts.
 
-Profiles carry a `status`. Only a `verified` one, meaning somebody actually ran
-these fixes on that machine, unlocks everything. On a `reported` or `draft`
-profile the run stops as well, and `ALLOW_UNVERIFIED=1` opens up just the
+Each board section of a profile carries a `status`. Only a `verified` one,
+meaning somebody actually ran these fixes on that board, unlocks everything. On
+a `reported` or `draft` section the run stops as well, and `ALLOW_UNVERIFIED=1`
+opens up just the
 subset that cannot go wrong: fixes that read their inputs off the running
 machine, or match on a device id and find nothing on hardware they were not
 meant for. Anything carrying a measured backlight floor, an audio subsystem id
 or an EC register offset stays disabled. The tiers are defined in
 [`lib/profile.sh`](lib/profile.sh).
 
-Right now exactly one profile is `verified`, the machine this was built on.
+Right now exactly one board section is `verified`, `ZQC-P` board `M1010`, the
+machine this was built on. Detection reports which board it decided on, and says
+so plainly when that is not one the profile describes.
 
 ### Options
 
@@ -160,9 +195,10 @@ Right now exactly one profile is `verified`, the machine this was built on.
 | `SKIP_FINGERPRINT=1` | no `libfprint` rebuild, by far the slowest step |
 | `VBT_MIN=<n>` | backlight floor in n/255, default 12. Measure yours first with `patch/oled-backlight/measure-floor.sh` |
 | `WITH_CDCLK=1` | rebuild `xe.ko` with the Panther Lake cdclk fix. Off by default: it downloads the distro kernel source, about 260 MB, and compiles for a few minutes |
+| `WITH_DSC=1` | rebuild `xe.ko` so the driver prefers DSC over dropping the panel to 6 bits per colour. Off by default for the same reason. Both `WITH_*` together build the module once |
 | `CHARGE_PRESET="40 70"` | which battery charge preset to arm. Only the pairs the EC enforces work, see [`patch/battery/README.md`](patch/battery/README.md) |
 | `FORCE_ACPI=1` | install the ACPI override even though your machine's `I2C_DEVT` table is not the one it was built from. That mismatch means a BIOS update rewrote it or this is a different machine; read [docs/RESEARCH.md](docs/RESEARCH.md) first |
-| `ALLOW_UNVERIFIED=1` | run on a model whose profile is not `verified`, restricted to the fixes that derive their own inputs |
+| `ALLOW_UNVERIFIED=1` | run on a board whose profile section is not `verified`, restricted to the fixes that derive their own inputs |
 | `GUARD_ZERO=1` | add a udev rule that bounces a write of `0` to the backlight back to `1`. Writing 0 blanks the panel rather than dimming it, and no VBT value can prevent that. Off by default |
 
 The full step-by-step, how to verify it worked, and notes for other
@@ -213,7 +249,8 @@ out. [`patch/README.md`](patch/README.md) is the index.
 
 **[Issue #11](https://github.com/rs0x29a/Linux-on-HONOR-MagicBook-14-Pro-2026-AI_ZQC-P_M1010/issues/11) is where this is tracked.** It lists where every model
 stands, what a dump has to contain, and which numbers cannot be read off a
-machine and have to be measured on it. Only `ZQC-P` is verified; everything
+machine and have to be measured on it. Only `ZQC-P` board `M1010` is verified;
+everything
 else is waiting on somebody who owns one.
 
 One read-only command produces everything needed to write a profile for it:

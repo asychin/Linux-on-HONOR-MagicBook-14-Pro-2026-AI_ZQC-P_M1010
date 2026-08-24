@@ -212,3 +212,41 @@ XPPen, Wacom, TUXEDO, Rapoo, Microsoft, Logitech and others — plus
 `Generic__touchpad.bpf.c`, and **nothing for HONOR**. Both HID-BPF programs in
 this repository, this one and the touchpad-edge translator, are exactly the
 shape that directory takes. Neither has been submitted.
+
+## Layout: one program per touchscreen
+
+```
+patch/micmute/
+    install.sh
+    hid-bpf-reapply.sh          the boot-time re-apply, no ids in it
+    honor-hid-bpf-reapply.service
+    touchscreens/
+        2808-5662-focaltech-ftsc1000/
+            recipe.conf
+            honor-ftsc1000-micmute.bpf.c
+```
+
+Same shape as [`../fingerprint/sensors/`](../fingerprint/sensors/), for the same
+reason. The fixup rewrites usage page `0xff01` where one chip's report
+descriptor uses it for a wide variable field. That is a statement about that
+chip, not about a laptop, so it cannot be widened by editing a match: another
+touchscreen doing something else on that page needs its own program.
+
+The installer takes `touchscreen_hid` from the board section of the device
+profile, **confirms it against the HID bus** rather than trusting the file, and
+then picks the directory whose name starts with the id it actually found. So a
+unit fitted with a part the profile does not list gets a refusal that names the
+part, not a program built for a chip that is not there.
+
+To add one:
+
+1. `mkdir patch/micmute/touchscreens/<vid>-<pid>-<chip>/`
+2. write the program there. It is compiled with `-DHID_VID` and `-DHID_PID`
+   from the probed id, so use those names; keep `#ifndef` fallbacks so it still
+   builds by hand. The file has to be named `honor-<chip>-micmute.bpf.c`, which
+   is how `uninstall_patch.sh` finds the object it produced.
+3. write `recipe.conf` with `name`, `program`, `status` and `origin`.
+4. list `micmute` in the board sections that ship that part.
+
+`tools/selftest.sh` checks the naming, that the recipe names a file that exists,
+and that no device id has been written into anything installed.

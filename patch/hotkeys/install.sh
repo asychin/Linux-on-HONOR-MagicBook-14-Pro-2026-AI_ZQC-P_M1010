@@ -126,7 +126,7 @@ DEST="$(distro_module_install "${WORK}/huawei-wmi.ko" huawei-wmi "$KVER")"
 log "installed $DEST"
 
 # --- 5. silence the companion atkbd scancode ----------------------------------
-install -Dm644 "$HWDB_SRC" "$HWDB_DST"
+gate_hwdb_render "$HWDB_SRC" "$HWDB_DST"
 if command -v systemd-hwdb >/dev/null; then
     systemd-hwdb update && udevadm trigger --subsystem-match=input --action=change
     log "installed $HWDB_DST"

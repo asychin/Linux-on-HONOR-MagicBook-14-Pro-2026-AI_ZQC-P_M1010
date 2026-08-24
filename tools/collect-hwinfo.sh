@@ -315,22 +315,34 @@ awk '/^===== PCI =====/ { exit } /^===== DMI =====/ { p = 1 } p' "$REPORT"
 dmi() { grep -m1 "^$1 " "$REPORT" | awk '{$1=""; print substr($0,2)}'; }
 
 echo "===== what this fills in, in devices/<model>.conf ====="
-printf '%-20s %s\n' \
+# The base block is identity only. Everything else belongs to one board
+# revision, and the revision is the section header rather than a key, so print
+# it in the shape it has to be written in.
+echo "base block:"
+printf '  %-18s %s\n' \
+    "model"           "$(dmi product_name)" \
     "dmi_vendor"      "$(dmi sys_vendor)" \
-    "dmi_product"     "$(dmi product_name)" \
+    "dmi_product"     "$(dmi product_name)"
+bv="$(dmi board_version)"
+[[ -n "$bv" ]] || bv="$(dmi product_version)"
+echo
+echo "section:"
+printf '  [board %s]\n' "${bv:-UNKNOWN-say-so-rather-than-guessing}"
+printf '  %-18s %s\n' \
     "dmi_sku"         "$(dmi product_sku)" \
-    "dmi_board"       "$(dmi board_name)"
+    "dmi_board"       "$(dmi board_name)" \
+    "cpu"             "$(grep -m1 '^model name' /proc/cpuinfo | cut -d: -f2- | sed 's/^ *//')"
 
 ssid="$(sed -n '/===== audio subsystem id/,/^$/p' "$REPORT" | awk 'NF==2 {print $2}' | head -1)"
-printf '%-20s %s\n' "audio_ssid" "${ssid//0x/}"
+printf '  %-18s %s\n' "audio_ssid" "${ssid//0x/}"
 
 if grep -qi '^none$' <(sed -n '/===== discrete GPU/,/^$/p' "$REPORT"); then
-    printf '%-20s %s\n' "dgpu" "none"
+    printf '  %-18s %s\n' "dgpu" "none"
 else
-    printf '%-20s %s\n' "dgpu" "nvidia"
+    printf '  %-18s %s\n' "dgpu" "nvidia"
 fi
 
-printf '%-20s %s\n' "backlight_max" \
+printf '  %-18s %s\n' "backlight_max" \
     "$(sed -n '/===== backlight/,/^$/p' "$REPORT" | sed -n 's/.*max_brightness=\([0-9]*\).*/\1/p' | head -1)"
 
 # The HID directory name carries the ids but not which device is which, so
@@ -349,15 +361,19 @@ fi
 fp="$(sed -n '/===== USB/,/^$/p' "$REPORT" \
       | grep -iE 'goodix|elan|synaptics|fingerprint|validity' \
       | grep -oE '[0-9a-f]{4}:[0-9a-f]{4}' | head -1 || true)"
-[[ -n "$fp" ]] && printf '%-20s %s\n' "fingerprint_usb" "$fp" \
-               || echo "fingerprint_usb      no obvious reader in lsusb, check by hand"
+[[ -n "$fp" ]] && printf '  %-18s %s\n' "fingerprint_usb" "$fp" \
+               || echo "  fingerprint_usb    no obvious reader in lsusb, check by hand"
 
 cat <<'NOTE'
 
-panel                oled or lcd, you know this by looking at the screen
-ec_fan0 / ec_fan1    from the tachometer fields in DSDT, inside acpi-tables.tar.gz
-param_backlight_min  measure it, patch/oled-backlight/measure-floor.sh
-param_audio_fixup    only exists once somebody writes it for this board
+  panel              oled or lcd, you know this by looking at the screen
+  ec_fan0 / ec_fan1  from the tachometer fields in DSDT, inside acpi-tables.tar.gz
+  param_backlight_min  measure it, patch/oled-backlight/measure-floor.sh
+  param_audio_fixup  only exists once somebody writes it for this board
+
+Everything under "section" belongs to the [board ...] block above it, not to the
+base block. That is the point: HONOR ships one product code as several machines,
+so a value read here describes this board and no other.
 NOTE
 
 echo

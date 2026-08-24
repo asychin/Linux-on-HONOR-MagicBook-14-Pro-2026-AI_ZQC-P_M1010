@@ -5,6 +5,11 @@
 # See README.md in this directory for what the gesture actually sends and why
 # a report descriptor fixup is not enough.
 #
+# Nothing here is tied to one laptop. The touchpad id comes from the board
+# section of the device profile and is then confirmed against the HID bus, and
+# the program itself comes from touchpads/<vid>-<pid>-<chip>/, one directory per
+# touchpad. Adding a second touchpad is adding a directory.
+#
 # Reruns are safe. Nothing here has to be repeated after a kernel update:
 # the BPF object is CO-RE and libbpf relocates it against the running
 # kernel's BTF.
@@ -17,10 +22,8 @@ if (( EUID != 0 )); then
 fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SRC="${SCRIPT_DIR}/honor-tops0102-edge.bpf.c"
-OBJ_NAME="honor-tops0102-edge.bpf.o"
+FAMILY_DIR="${SCRIPT_DIR}/touchpads"
 INSTALL_DIR="/etc/udev-hid-bpf"
-RULES_FILE="/etc/udev/rules.d/99-hid-bpf-honor-tops0102-edge.rules"
 KVER="$(uname -r)"
 TAG="v${KVER%%-*}"
 BASE_URL="https://raw.githubusercontent.com/gregkh/linux/${TAG}/drivers/hid/bpf/progs"
@@ -33,19 +36,41 @@ warn() { printf '\033[1;33m==>\033[0m %s\n' "$*" >&2; }
 die()  { printf '\033[1;31m==>\033[0m %s\n' "$*" >&2; exit 1; }
 
 # --- 1. prerequisites ---------------------------------------------------------
-[[ -f "$SRC" ]] || die "source not found: $SRC"
-
 # Tier A: the program is bound to one HID id, so on a machine without that
 # touchpad udev-hid-bpf simply never attaches it.
 source "${SCRIPT_DIR}/../../lib/gate.sh"
 honor_gate touchpad-edge
 
-HID_ID="$(gate_param touchpad_hid)" || die \
-    "$(profile_get model) does not record touchpad_hid.
-    Find it in 'ls /sys/bus/hid/devices/' and add it to the profile."
+# The profile lists what the board is known to ship; go and see which of those
+# is actually here.
+rc=0; HID_ID="$(gate_probe_hid touchpad_hid)" || rc=$?
+case "$rc" in
+    1) die "$(profile_get model) board ${PROFILE_BOARD:-?} does not record touchpad_hid.
+    Find it in 'ls /sys/bus/hid/devices/' and add it to that board's section." ;;
+    2) die "none of the touchpads $(profile_get model) is known to ship is on
+    this HID bus. Looked for: $(profile_get touchpad_hid)" ;;
+esac
 HID_VID="0x${HID_ID%%:*}"
 HID_PID="0x${HID_ID##*:}"
-log "touchpad ${HID_VID}:${HID_PID} (from the $(profile_get model) profile)"
+
+recipe_find "$FAMILY_DIR" "$HID_ID" || die \
+    "the touchpad here is $HID_ID and this repository has no program for it.
+    Covered: $(recipe_known "$FAMILY_DIR")
+
+    The gesture is reported on a vendor collection whose byte layout belongs to
+    one chip, so the program cannot simply be pointed at another touchpad. See
+    patch/touchpad-edge/README.md for what a new recipe has to contain."
+recipe_load
+
+SRC="${RECIPE_DIR}/$(recipe_get program)"
+[[ -f "$SRC" ]] || die "${RECIPE_DIR}/recipe.conf names a program that is not there: $(recipe_get program)"
+OBJ_NAME="$(basename "${SRC%.c}").o"
+# What `udev-hid-bpf list-loaded` calls the program: the object's base name with
+# dashes turned into underscores.
+PROG_TAG="$(basename "${OBJ_NAME%%.*}" | tr '-' '_')"
+
+log "touchpad $HID_ID: $(recipe_get name)"
+recipe_warn_unverified
 
 MISSING=()
 for t in clang bpftool curl udev-hid-bpf udevadm; do
@@ -87,7 +112,7 @@ bpftool btf dump file /sys/kernel/btf/vmlinux format c > "${WORK}/vmlinux.h"
 log "building ${OBJ_NAME}"
 cp "$SRC" "${WORK}/"
 clang -O2 -g -target bpf -mcpu=v3 -D__TARGET_ARCH_x86 \
-      -DVID_GOODIX="${HID_VID}" -DPID_TOPS0102="${HID_PID}" \
+      -DHID_VID="${HID_VID}" -DHID_PID="${HID_PID}" \
       -I"$WORK" -Wno-missing-declarations \
       -c "${WORK}/$(basename "$SRC")" -o "${WORK}/${OBJ_NAME}" 2>&1 \
     | grep -vE "does not declare anything|^ *[0-9]+ \||^ +\^|In file included from|warnings? generated" \
@@ -103,11 +128,10 @@ udev-hid-bpf install --force "${WORK}/${OBJ_NAME}" >/dev/null
 udevadm control --reload
 
 # --- 5. apply to the live device ----------------------------------------------
-DEV=""
-for d in /sys/bus/hid/devices/*27C6:0F9A*; do [[ -e "$d" ]] && DEV="$d"; done
+DEV="$(gate_hid_devpath "$HID_ID")" || DEV=""
 
 if [[ -z "$DEV" ]]; then
-    warn "No 27C6:0F9A touchpad present. The program is installed and will be"
+    warn "No $HID_ID touchpad present. The program is installed and will be"
     warn "attached when the device appears."
     exit 0
 fi
@@ -118,7 +142,7 @@ sleep 1
 udev-hid-bpf add "$DEV" "${INSTALL_DIR}/${OBJ_NAME}" >/dev/null 2>&1 || true
 sleep 1
 
-udev-hid-bpf list-loaded 2>/dev/null | grep -q 'honor_tops0102' \
+udev-hid-bpf list-loaded 2>/dev/null | grep -q "$PROG_TAG" \
     || die "the program is not attached to the device"
 
 log "attached"
@@ -128,8 +152,8 @@ cat <<EOF
 ════════════════════════════════════════════════════════════════════
   Installed.
 
+  Touchpad   : ${HID_ID}, $(recipe_get name)
   BPF object : ${INSTALL_DIR}/${OBJ_NAME}
-  udev rule  : ${RULES_FILE}
 
   Slide along the LEFT edge of the touchpad to change brightness.
   The right edge already changes volume through the EC and is untouched.
@@ -137,13 +161,13 @@ cat <<EOF
   Nothing to redo after a kernel update.
 
   Verify:
-      sudo udev-hid-bpf list-loaded | grep honor_tops0102
+      sudo udev-hid-bpf list-loaded | grep ${PROG_TAG}
       sudo evtest /dev/input/event\$(...)   # Consumer Control device
       # or simply watch the value while sliding:
       watch -n0.2 cat /sys/class/backlight/intel_backlight/brightness
 
   Uninstall:
-      sudo rm ${INSTALL_DIR}/${OBJ_NAME} ${RULES_FILE}
+      sudo rm ${INSTALL_DIR}/${OBJ_NAME}
       sudo udevadm control --reload
       reboot
 ════════════════════════════════════════════════════════════════════

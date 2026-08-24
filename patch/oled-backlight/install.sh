@@ -50,9 +50,10 @@ fi
 
 SRC_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FW_DIR=/usr/lib/firmware/honor
-FW_NAME=zqc-p-vbt.bin
-FW_PATH="${FW_DIR}/${FW_NAME}"
-FW_PARAM="honor/${FW_NAME}"
+# Named after the board this was dumped from, not after the machine this script
+# was written on. The blob IS that machine's VBT with one byte changed, so a
+# name that says which machine is the honest one, and uninstall.sh globs.
+# FW_NAME, FW_PATH and FW_PARAM are set once the profile is loaded, below.
 STATE_DIR=/var/lib/honor
 FACTORY="${STATE_DIR}/vbt-factory.bin"
 STAMP="${STATE_DIR}/oled-backlight.stamp"
@@ -68,6 +69,13 @@ die()  { printf '\033[1;31m==>\033[0m %s\n' "$*" >&2; exit 1; }
 # measured by eye on one panel, so it needs a verified profile.
 source "${SRC_DIR}/../../lib/gate.sh"
 honor_gate oled-backlight
+
+FW_NAME="$(profile_get model)-vbt.bin"
+FW_NAME="${FW_NAME,,}"
+FW_PATH="${FW_DIR}/${FW_NAME}"
+# request_firmware() looks under /usr/lib/firmware, so the parameter is the path
+# relative to that.
+FW_PARAM="honor/${FW_NAME}"
 
 # vbt-factory.bin under the old path is the only copy of this machine's
 # untouched VBT, so it is moved rather than dropped.
@@ -163,6 +171,25 @@ log "installed $FW_PATH"
 # --- 5. initramfs -------------------------------------------------------------
 # xe.ko is pulled into the initramfs by the kms hook, so request_firmware()
 # runs before the root filesystem is up. The blob has to travel with it.
+#
+# mkinitcpio has FILES= for exactly this. dracut and Debian's update-initramfs
+# do not, and they stage firmware their own way, so on those this stops and says
+# what to do rather than editing a file that is not there. It used to run the
+# sed unguarded, which killed the script outright on every non-Arch machine.
+if [[ ! -f /etc/mkinitcpio.conf ]]; then
+    warn "no /etc/mkinitcpio.conf on this system ($(distro_family))."
+    warn "The blob is installed at $FW_PATH and the kernel parameter is set, but"
+    warn "the driver reads it before the root filesystem is mounted, so it also"
+    warn "has to be inside the initramfs. Add it with your own generator:"
+    warn ""
+    warn "    dracut:            echo 'install_items+=\" $FW_PATH \"' \\"
+    warn "                         > /etc/dracut.conf.d/honor-vbt.conf"
+    warn "    update-initramfs:  add $FW_PATH via a hook in"
+    warn "                         /etc/initramfs-tools/hooks/"
+    warn ""
+    warn "then rebuild the initramfs. Until then the panel keeps the firmware"
+    warn "floor and nothing is broken."
+else
 cp -a /etc/mkinitcpio.conf "$BACKUP/mkinitcpio.conf"
 if grep -q "$FW_NAME" /etc/mkinitcpio.conf; then
     log "mkinitcpio.conf already lists the blob in FILES="
@@ -177,6 +204,7 @@ else
     log "appended a FILES= line"
 fi
 echo "    $(grep -E '^FILES=' /etc/mkinitcpio.conf)"
+fi
 
 # --- 5b. optional guard against a write of exactly 0 --------------------------
 # The panel power decision is made on the user value before scaling, so the VBT
@@ -193,23 +221,22 @@ fi
 
 # --- 6. kernel command line ---------------------------------------------------
 CMDLINE_ARG="${DRV}.vbt_firmware=${FW_PARAM}"
-if [[ -f /etc/default/limine ]]; then
-    cp -a /etc/default/limine "$BACKUP/limine.default"
-    if grep -q "vbt_firmware=" /etc/default/limine; then
-        # replace whatever is there, the driver name may have changed
-        sed -i "s#\b\(xe\|i915\)\.vbt_firmware=[^ \"]*#${CMDLINE_ARG}#" /etc/default/limine
-        log "updated the existing vbt_firmware= on the cmdline"
-    else
-        # distro_cmdline_add knows every shape this file comes in, including the
-        # plain KERNEL_CMDLINE[default]= and per-kernel keys, and refuses rather
-        # than editing one it does not recognise. The sed that used to be here
-        # only matched the += form and reported success either way.
-        distro_cmdline_add "$CMDLINE_ARG" \
-            || warn "add $CMDLINE_ARG to your kernel command line yourself"
-    fi
-    echo "    $(grep -E '^KERNEL_CMDLINE\[default\]' /etc/default/limine)"
+# Through lib/distro.sh, which knows Limine, GRUB and systemd-boot and refuses
+# rather than editing a shape it does not recognise. This block used to test for
+# /etc/default/limine and tell everybody else to do it by hand, which meant the
+# fix only ever installed itself on Arch with Limine.
+CMDFILE="$(distro_cmdline_file 2>/dev/null || true)"
+if [[ -n "$CMDFILE" && -f "$CMDFILE" ]]; then
+    cp -a "$CMDFILE" "${BACKUP}/$(basename "$CMDFILE")"
+    # Remove any previous one first: the driver name may have changed between
+    # i915 and xe, and two vbt_firmware= parameters is not better than one.
+    distro_cmdline_remove '(xe|i915)\.vbt_firmware=[^ "]*' || true
+    distro_cmdline_add "$CMDLINE_ARG" \
+        || warn "add $CMDLINE_ARG to your kernel command line yourself"
+    echo "    $(grep -hE 'CMDLINE|^[^#]' "$CMDFILE" | head -1)"
 else
-    warn "/etc/default/limine not found — add this to your bootloader's cmdline:"
+    warn "no kernel command line file found for $(distro_family)."
+    warn "Add this to your bootloader's command line yourself:"
     warn "    $CMDLINE_ARG"
 fi
 

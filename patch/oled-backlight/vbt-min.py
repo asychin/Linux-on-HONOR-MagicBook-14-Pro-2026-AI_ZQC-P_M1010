@@ -19,10 +19,23 @@ the driver never verifies it (intel_bios_is_valid_vbt() checks the signature
 and the sizes only), and the factory blob does not sum to zero over any
 plausible range anyway.
 """
+import glob
 import struct
 import sys
 
-PWM_MAX_HINT = 704          # BXT_BLC_PWM_FREQ on ZQC-P, used for the printout only
+def pwm_level_max():
+    """The panel's own max_brightness, for turning an n/255 VBT floor into the
+    number the driver will actually program.
+
+    Read off this machine rather than written down: it is one file in sysfs, and
+    a constant here would be the value of the one panel this was developed on
+    printed confidently at somebody else with a different one."""
+    for p in sorted(glob.glob('/sys/class/backlight/*/max_brightness')):
+        try:
+            return int(open(p).read().strip())
+        except (OSError, ValueError):
+            continue
+    return None
 
 
 def die(msg):
@@ -112,8 +125,13 @@ def show(buf, label='VBT'):
     print(f'  precision_bits     {info["precision"]}')
     print(f'  default level      {info["level"]}/255')
     print(f'  minimum level      {mn}/255 = {mn / 255 * 100:.2f}%')
-    print(f'  hardware floor     {round(mn * PWM_MAX_HINT / 255)}/{PWM_MAX_HINT} '
-          f'(assuming pwm_level_max {PWM_MAX_HINT})')
+    pmax = pwm_level_max()
+    if pmax:
+        print(f'  hardware floor     {round(mn * pmax / 255)}/{pmax} '
+              f'(this panel reports max_brightness {pmax})')
+    else:
+        print('  hardware floor     unknown, no readable '
+              '/sys/class/backlight/*/max_brightness')
     if ctrl not in (2,):
         print('  note: this panel is not on the native PWM path, the floor may '
               'be computed differently')

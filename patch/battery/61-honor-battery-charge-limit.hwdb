@@ -16,6 +16,14 @@
 # GNOME and KDE toggles do the right thing on their own.
 #
 # The file has to sort after 60-upower-battery.hwdb, hence 61-.
+#
+# This is a template. patch/battery/install.sh fills in @HONOR_DMI_MATCH@ with
+# the vendor, product and BOARD REVISION of the machine it is running on, and
+# CHARGE_LIMIT with a pair out of that board's section of the device profile.
+# Neither is written out here: HONOR ships one product code as several boards,
+# and the presets the EC enforces are a property of its firmware, so a rule
+# matching every ZQC-P would arm a pair on a revision where nobody has checked
+# that the EC accepts it.
 
-battery:*:*:dmi:*svnHONOR*pnZQC-P*
- CHARGE_LIMIT=70,90
+battery:*:*:dmi:*@HONOR_DMI_MATCH@
+ CHARGE_LIMIT=@HONOR_CHARGE_LIMIT@

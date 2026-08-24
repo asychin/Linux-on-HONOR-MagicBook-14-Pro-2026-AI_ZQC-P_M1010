@@ -34,6 +34,12 @@ affected.
 | 17 | Runs `patch/hotkey-actions/install.sh` — the performance key cycles power profiles, the camera key switches the webcam off |
 | 18 | Runs `patch/auto-rebuild/install.sh` — package-manager hooks that keep steps 9, 10 and 14 applied across package updates |
 
+`apply_patch.sh` exits non-zero if any step reported a problem, and prints how
+many at the end. Everything that did work is still applied: the steps are
+independent by design, so a failure in one does not undo the others. The exit
+status exists so a script, or you the next morning, can tell "all of it" from
+"most of it". `uninstall_patch.sh` behaves the same way.
+
 Steps 9 and 10 are skipped with a warning if kernel lockdown or
 `module.sig_enforce=1` would block an unsigned module. Step 2 warns about
 lockdown too, for a different reason: it silently refuses ACPI table overrides,

@@ -1,4 +1,4 @@
-# Re-apply the HONOR ZQC-P libfprint fingerprint patch after libfprint is
+# Re-apply the HONOR MagicBook libfprint fingerprint patch after libfprint is
 # upgraded or reinstalled, which would otherwise drop it.
 #
 # The rebuild is deferred to a transient systemd unit, because it has to call
@@ -13,6 +13,6 @@ Type = Package
 Target = libfprint
 
 [Action]
-Description = Re-applying the HONOR ZQC-P fingerprint patch...
+Description = Re-applying the HONOR MagicBook fingerprint patch...
 When = PostTransaction
 Exec = /usr/local/lib/honor/rebuild.sh fingerprint

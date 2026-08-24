@@ -4,70 +4,82 @@
 #
 # Dropping the kernel parameter alone is enough to restore stock behaviour;
 # everything else here is tidying up. The saved factory VBT is kept by default
-# so a later re-install does not have to boot without the parameter first, pass
-# PURGE=1 to remove it too.
+# so a later re-install does not have to boot without the parameter first. Pass
+# PURGE=1 to remove that too.
+#
+# Runs on its own: sudo bash $0
+# See lib/uninstall.sh for why this is not gated on the device profile.
 
-set -euo pipefail
-
-if (( EUID != 0 )); then
-    echo "Must be run as root. Use: sudo bash $0" >&2
-    exit 1
-fi
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=/dev/null
+source "${SCRIPT_DIR}/../../lib/uninstall.sh"
 
 FW_DIR=/usr/lib/firmware/honor
-FW_PATH="${FW_DIR}/zqc-p-vbt.bin"
 STATE_DIR=/var/lib/honor
 PURGE="${PURGE:-0}"
 
-log() { printf '\033[1;32m==>\033[0m %s\n' "$*"; }
-
-log "[1/5] Remove the kernel parameter"
-if [[ -f /etc/default/limine ]]; then
-    sed -i "s# \(xe\|i915\)\.vbt_firmware=[^ \"]*##" /etc/default/limine
-    echo "    $(grep -E '^KERNEL_CMDLINE\[default\]' /etc/default/limine)"
+u_log "Removing the kernel parameter"
+# Through lib/distro.sh, not by editing /etc/default/limine directly. This used
+# to be a sed at a hardcoded limine path, so on GRUB or systemd-boot it printed
+# "drop it by hand" for a case the library already handles.
+if f="$(distro_cmdline_file 2>/dev/null)" && [[ -n "$f" ]]; then
+    distro_cmdline_remove '(xe|i915)\.vbt_firmware=[^ "]*'
+    echo "    $(grep -hE 'CMDLINE|^[^#]' "$f" | head -1)"
 else
-    echo "    /etc/default/limine not found — drop xe.vbt_firmware= from your"
-    echo "    bootloader's cmdline by hand"
+    u_warn "no kernel command line file found; drop (xe|i915).vbt_firmware=
+    from your bootloader's command line by hand"
 fi
 
-log "[2/5] Drop the blob from the initramfs file list"
-sed -i "/^FILES=/ { s#${FW_PATH} *##; s#^FILES=( *)#FILES=()#; }" /etc/mkinitcpio.conf
-echo "    $(grep -E '^FILES=' /etc/mkinitcpio.conf)"
+u_log "Dropping the blob from the initramfs file list"
+# mkinitcpio only. dracut and Debian's update-initramfs stage firmware
+# differently and the installer does not use FILES= there, so there is nothing
+# to undo. This used to run unguarded and killed the whole script on any
+# machine without mkinitcpio, which is every Debian and Fedora one.
+if [[ -f /etc/mkinitcpio.conf ]]; then
+    sed -i -E "/^FILES=/ { s#${FW_DIR}/[A-Za-z0-9._-]+ *##; s#^FILES=\( *\)#FILES=()#; }" \
+        /etc/mkinitcpio.conf
+    echo "    $(grep -E '^FILES=' /etc/mkinitcpio.conf)"
+else
+    echo "    no /etc/mkinitcpio.conf on this system, nothing staged there"
+fi
 
-log "[3/5] Remove the installed firmware blob and the optional zero guard"
-rm -fv /etc/udev/rules.d/99-honor-backlight-nonzero.rules
+u_log "Removing the firmware blob and the optional zero guard"
+u_rm /etc/udev/rules.d/99-honor-backlight-nonzero.rules \
+     /etc/udev/rules.d/99-honor-zqcp-backlight-nonzero.rules
 udevadm control --reload 2>/dev/null || true
-rm -fv "$FW_PATH"
+# Off Arch the installer cannot edit an initramfs file list, so it asks for a
+# dracut drop-in instead. Remove ours; a hand-written one is the user's.
+u_rm /etc/dracut.conf.d/honor-vbt.conf
+# Globbed: the blob is named after the model it was dumped from, so a machine
+# that is not the reference one has a different file here.
+shopt -s nullglob
+u_rm "$FW_DIR"/*-vbt.bin || echo "    no blob installed"
+shopt -u nullglob
 rmdir --ignore-fail-on-non-empty "$FW_DIR" 2>/dev/null || true
-rm -fv "${STATE_DIR}/vbt-patched.bin" "${STATE_DIR}/oled-backlight.stamp"
+u_rm "${STATE_DIR}/vbt-patched.bin" "${STATE_DIR}/oled-backlight.stamp" \
+     /var/lib/honor-zqcp/vbt-patched.bin
+
 if (( PURGE )); then
-    rm -fv "${STATE_DIR}/vbt-factory.bin"
+    u_rm "${STATE_DIR}/vbt-factory.bin"
     rmdir --ignore-fail-on-non-empty "$STATE_DIR" 2>/dev/null || true
 else
-    echo "    kept ${STATE_DIR}/vbt-factory.bin (PURGE=1 to remove it)"
+    # This is the only copy of the untouched VBT. Getting it back means booting
+    # once without the parameter, so it is kept unless somebody insists.
+    [[ -f "${STATE_DIR}/vbt-factory.bin" ]] \
+        && echo "    kept ${STATE_DIR}/vbt-factory.bin (PURGE=1 to remove it)"
 fi
 
-# uninstall_patch.sh regenerates once at the end, so it calls us with REGEN=0.
-if (( ${REGEN:-1} )); then
-    log "[4/5] Regenerate the initramfs"
-    source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/lib/distro.sh"
-    distro_initramfs_rebuild || echo "    rebuild the initramfs yourself"
+u_log "Rebuilding the initramfs and the bootloader config"
+u_regen
 
-    log "[5/5] Update the bootloader config"
-    if command -v limine-update >/dev/null; then
-        limine-update
-    else
-        echo "    limine-update not found, skipped"
-    fi
-else
-    log "[4/5] skipping the initramfs rebuild (REGEN=0), the caller will do it"
-fi
+cat <<'EOF'
 
-cat <<EOF
+    Reboot to go back to the firmware minimum. After that this must print
+    nothing:
 
-$(printf '\033[1;32m==>\033[0m') reverted. Reboot to go back to the firmware minimum.
+        grep -o 'vbt_firmware=[^ ]*' /proc/cmdline
 
-After the reboot this must print nothing:
-
-  grep -o 'vbt_firmware=[^ ]*' /proc/cmdline
+    The panel's darkest settings come back, and so do the colour cast and the
+    blotches at those settings, which is the trade this fix exists to make.
 EOF
+u_done

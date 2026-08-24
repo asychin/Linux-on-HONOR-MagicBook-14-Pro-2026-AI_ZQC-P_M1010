@@ -42,15 +42,15 @@
  * The touchscreen this was written against. install.sh passes -D for both from
  * the device profile; the defaults keep this file compilable on its own.
  */
-#ifndef VID_FOCALTECH
-#define VID_FOCALTECH		0x2808
+#ifndef HID_VID
+#define HID_VID		0x2808
 #endif
-#ifndef PID_FTSC1000
-#define PID_FTSC1000		0x5662
+#ifndef HID_PID
+#define HID_PID		0x5662
 #endif
 
 HID_BPF_CONFIG(
-	HID_DEVICE(BUS_I2C, HID_GROUP_MULTITOUCH_WIN_8, VID_FOCALTECH, PID_FTSC1000)
+	HID_DEVICE(BUS_I2C, HID_GROUP_MULTITOUCH_WIN_8, HID_VID, HID_PID)
 );
 
 #define RDESC_MAX		4096		/* HID_MAX_DESCRIPTOR_SIZE */

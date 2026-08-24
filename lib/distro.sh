@@ -277,16 +277,14 @@ distro_bootloader_update() {
 }
 
 # --- hooks that run after a kernel package update ------------------------------
-
-# Arch has pacman hooks; Debian has /etc/kernel/postinst.d, which is the same
-# idea and is what the distribution's own DKMS integration uses.
-distro_kernel_hook_supported() {
-    case "$(distro_family)" in
-        arch)   [[ -d /etc/pacman.d ]] ;;
-        debian) [[ -d /etc/kernel ]] ;;
-        *)      return 1 ;;
-    esac
-}
+#
+# There used to be a distro_kernel_hook_supported() here. Nothing ever called
+# it: patch/auto-rebuild/install.sh has to know *which* hook style to write, not
+# merely whether one exists, so it does its own case on distro_family and that
+# is the only caller there could be. Dead code that looks like an extension
+# point is worse than none, and it had already collected an edit from somebody
+# adding a branch to a function that never runs. If a second caller ever appears
+# that only wants a yes or no, bring it back then.
 
 # --- ACPI table overrides -----------------------------------------------------
 #

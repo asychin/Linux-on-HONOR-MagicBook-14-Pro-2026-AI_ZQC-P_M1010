@@ -21,16 +21,48 @@
 #
 # Detaching and re-attaching after the device has settled runs the reconnect
 # properly. This is a no-op when the boot-time attach won the race.
+#
+# Which touchscreen to look for is NOT written here. patch/micmute/install.sh
+# probes the HID bus and records the answer in /etc/honor-micmute.conf, so this
+# script is the same file on every machine and cannot go looking for the
+# touchscreen of the laptop it was developed on.
 
 set -eu
 
-OBJ=/etc/udev-hid-bpf/honor-ftsc1000-micmute.bpf.o
-[ -f "$OBJ" ] || exit 0
+CONF=/etc/honor-micmute.conf
+
+if [ ! -r "$CONF" ]; then
+    echo "$CONF is missing; run patch/micmute/install.sh" >&2
+    exit 1
+fi
+
+HID_ID=""
+BPF_OBJECT=""
+# Parsed, not sourced: two keys, both written by the installer, and a config
+# file that is sourced is a config file that can run commands.
+while IFS='=' read -r key value; do
+    case "$key" in
+        HID_ID)     HID_ID="$value" ;;
+        BPF_OBJECT) BPF_OBJECT="$value" ;;
+    esac
+done < "$CONF"
+
+[ -n "$HID_ID" ] && [ -n "$BPF_OBJECT" ] || {
+    echo "$CONF names no touchscreen; re-run patch/micmute/install.sh" >&2
+    exit 1
+}
+[ -f "$BPF_OBJECT" ] || {
+    echo "$BPF_OBJECT is missing; re-run patch/micmute/install.sh" >&2
+    exit 1
+}
+
+# sysfs spells HID ids in upper case, and prefixes them with the bus number.
+HID_SYSFS=$(printf '%s' "$HID_ID" | tr '[:lower:]' '[:upper:]')
 
 DEV=""
 i=0
 while [ $i -lt 30 ]; do
-    for d in /sys/bus/hid/devices/*2808:5662*; do
+    for d in /sys/bus/hid/devices/*"$HID_SYSFS"*; do
         [ -e "$d" ] && DEV="$d"
     done
     [ -n "$DEV" ] && break
@@ -43,7 +75,7 @@ phantom() {
     for n in /sys/class/input/input*/name; do
         [ -e "$n" ] || continue
         case "$(cat "$n" 2>/dev/null)" in
-            *2808:5662*UNKNOWN*) return 0 ;;
+            *"$HID_SYSFS"*UNKNOWN*) return 0 ;;
         esac
     done
     return 1
@@ -57,7 +89,7 @@ fi
 echo "phantom present, re-applying the fixup to ${DEV##*/}"
 udev-hid-bpf remove "$DEV" || true
 sleep 1
-udev-hid-bpf add "$DEV" "$OBJ" || true
+udev-hid-bpf add "$DEV" "$BPF_OBJECT" || true
 sleep 1
 
 if phantom; then

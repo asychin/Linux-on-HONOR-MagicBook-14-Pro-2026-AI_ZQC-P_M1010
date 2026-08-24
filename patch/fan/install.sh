@@ -56,18 +56,25 @@ die()  { printf '\033[1;31m==>\033[0m %s\n' "$*" >&2; exit 1; }
 source "${SRC_DIR}/../../lib/gate.sh"
 honor_gate fan
 
-# The driver carries the offsets per DMI entry rather than reading them from
-# the profile, because a wrong offset must not be one config edit away. So the
-# profile saying "this model is fine" is not enough on its own: the model has
-# to be in the driver's table too.
-if ! grep -q "DMI_MATCH(DMI_PRODUCT_NAME, \"$(profile_get dmi_product)\")" \
-        "${SRC_DIR}/honor-ec-sensors.c"; then
-    die "$(profile_get model) is not in the DMI table in honor-ec-sensors.c.
-    Measure that machine's tachometer offsets, add a honor_ec_layout and a
-    matching entry there, and only then install. The module would refuse to
-    load anyway; failing here is just clearer about why."
-fi
-log "profile and driver agree on $(profile_get model)"
+# The offsets are recorded in one place, the board section of the device
+# profile, and handed to the module as parameters. They used to live a second
+# time in the driver's DMI table, which meant a machine could be described in
+# devices/ and still read another board's registers, or the two could drift
+# apart with nothing to notice.
+#
+# The driver keeps a built-in default for the one board it was measured on, so
+# a bare modprobe still works there, but this installer never relies on it.
+EC_FAN0="$(gate_param ec_fan0)" || die \
+    "$(profile_get model) board ${PROFILE_BOARD:-?} does not record ec_fan0.
+    The tachometer offsets have to be read out of that machine's DSDT before
+    this can run: see patch/fan/README.md."
+EC_FAN1="$(gate_param ec_fan1)" || die \
+    "$(profile_get model) board ${PROFILE_BOARD:-?} records ec_fan0 but not ec_fan1."
+for _o in "$EC_FAN0" "$EC_FAN1"; do
+    [[ "$_o" =~ ^0[xX][0-9a-fA-F]{1,2}$ ]] || die \
+        "ec_fan0/ec_fan1 must look like 0x2c; got '$_o'."
+done
+log "fan tachometers at ${EC_FAN0} and ${EC_FAN1} (board ${PROFILE_BOARD:-?})"
 
 # The module used to be called honor-zqcp-hwmon. Leaving the old one installed
 # would mean two drivers racing for the same EC offsets.
@@ -157,6 +164,17 @@ fi
 # --- 4. load + verify ---------------------------------------------------------
 echo "${MODNAME}" > /etc/modules-load.d/honor-ec-sensors.conf
 log "Enabled at boot via /etc/modules-load.d/honor-ec-sensors.conf"
+
+# The offsets travel with the module rather than being compiled into it, so the
+# boot-time load gets the same ones this run did.
+cat > /etc/modprobe.d/honor-ec-sensors.conf <<EOF
+# Written by patch/fan/install.sh from the [board ${PROFILE_BOARD:-?}] section
+# of devices/$(basename "${DETECT_PROFILE:-${HONOR_PROFILE:-?}}").
+# Re-run that installer rather than editing this: the offsets belong to the
+# device profile, and this file is a copy of what it says.
+options ${MODNAME} fan0=${EC_FAN0} fan1=${EC_FAN1}
+EOF
+chmod 0644 /etc/modprobe.d/honor-ec-sensors.conf
 
 if [[ "$KVER" != "$(uname -r)" ]]; then
     log "Built for $KVER, which is not the running kernel ($(uname -r))."

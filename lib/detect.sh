@@ -1,23 +1,35 @@
 # shellcheck shell=bash
 #
-# Work out which device profile describes the machine we are running on.
-# Source this after lib/profile.sh.
+# The DETECT_* variables are this file's interface. Every installer sources it
+# and reads them, which shellcheck cannot see from here.
+# shellcheck disable=SC2034
+#
+# Work out which device profile describes the machine we are running on, and
+# which board revision inside it. Source this after lib/profile.sh.
 #
 # product_name alone is not an identifier. HONOR sells a whole line under one
 # string: DRB-P covers both the UMA machine and the HUNTER one with a discrete
 # RTX, and DRA-XX covers every 2024 MagicBook Pro 16 regardless of CPU or GPU.
 # So candidates are first selected on vendor plus product, then narrowed by
-# whether a discrete GPU is present, then by board, board version and SKU.
+# whether a discrete GPU is present, then by board, board revision and SKU.
 #
 # That order is deliberate. dmi_sku is last because it is not model-unique on
 # these machines: SKU C233 is reported by ZQC-P, XWC-P, an FMB-P (board M1090),
 # a DRA-XX (board M1030) and BCC-N. It can only ever confirm, never decide.
-# board_version (M1020, M1030, M1040 ...) is the value that actually separates
-# variants sharing a product name.
 #
 # Matching is exact, never a substring: FMB-P is a prefix of FMB-PM, and the
 # kernel's own DMI_MATCH being a substring test is exactly why the upstream
 # atkbd quirk for FMB-P also catches FMB-PM.
+#
+# --- two steps, not one -------------------------------------------------------
+#
+# Picking the file is only half the job. board_version is not just a tiebreaker
+# between files; it is the thing that decides which machine this is. ZQC-P is
+# board M1010 with a Core Ultra X9 388H here and board M1050 with a Core Ultra 5
+# 338H in issue #1, and there is one ZQC-P file. So after a file is chosen,
+# profile_select_board picks the section inside it, and a revision nobody has
+# described gets the product-level facts with the trust taken away rather than
+# the constants measured on somebody else's board.
 
 DETECT_VENDOR=""
 DETECT_PRODUCT=""
@@ -68,11 +80,12 @@ detect_describe() {
 }
 
 # detect_profile <devices-dir>
-#   0  exactly one profile matched, path in DETECT_PROFILE and it is loaded
+#   0  exactly one profile matched, path in DETECT_PROFILE, loaded, and a board
+#      section selected. PROFILE_BOARD_MATCH says how well that section fits.
 #   1  nothing matched
 #   2  several matched and could not be told apart
 detect_profile() {
-    local dir="$1" f pv nvidia=1
+    local dir="$1" f nvidia=1
     local -a candidates=() narrowed=()
 
     detect_read_dmi
@@ -90,28 +103,32 @@ detect_profile() {
             printf 'detect: skipping %s, it does not parse\n' "$f" >&2
             continue
         fi
-        [[ "${PROFILE[dmi_vendor]}"  == "$DETECT_VENDOR"  ]] || continue
-        [[ "${PROFILE[dmi_product]}" == "$DETECT_PRODUCT" ]] || continue
+        # Base block only: vendor and product identify the product, and a
+        # section cannot change them.
+        [[ "${PROFILE_BASE[dmi_vendor]}"  == "$DETECT_VENDOR"  ]] || continue
+        [[ "${PROFILE_BASE[dmi_product]}" == "$DETECT_PRODUCT" ]] || continue
         candidates+=("$f")
     done
 
     (( ${#candidates[@]} )) || { PROFILE=(); return 1; }
 
-    # narrow by discrete GPU
+    # narrow by discrete GPU. A file stays in the running if any revision it
+    # describes could be this machine.
     if (( ${#candidates[@]} > 1 )); then
         narrowed=()
         for f in "${candidates[@]}"; do
             profile_load "$f" || continue
-            case "${PROFILE[dgpu]:-unknown}" in
-                nvidia) (( nvidia == 0 )) && narrowed+=("$f") ;;
-                none)   (( nvidia != 0 )) && narrowed+=("$f") ;;
-                *)      narrowed+=("$f") ;;
-            esac
+            if (( nvidia == 0 )); then
+                profile_offers dgpu nvidia || profile_offers dgpu unknown || continue
+            else
+                profile_offers dgpu none || profile_offers dgpu unknown || continue
+            fi
+            narrowed+=("$f")
         done
         (( ${#narrowed[@]} )) && candidates=("${narrowed[@]}")
     fi
 
-    # then by board, board version and SKU, in that order, and only where both
+    # then by board, board revision and SKU, in that order, and only where both
     # sides know the value. SKU is last because it collides across models.
     local key val
     for key in dmi_board dmi_board_version dmi_sku; do
@@ -125,11 +142,12 @@ detect_profile() {
         narrowed=()
         for f in "${candidates[@]}"; do
             profile_load "$f" || continue
-            # A field may list several values: one board carries five known
-            # revisions and reports whichever it is.
-            for pv in ${PROFILE[$key]:-unknown}; do
-                [[ "$pv" == "$val" ]] && { narrowed+=("$f"); break; }
-            done
+            # A file may describe several revisions, and a field may list
+            # several values: one board carries five known revisions and reports
+            # whichever it is. A file that does not know the value is dropped,
+            # unless that would drop every candidate, which the test below
+            # catches.
+            if profile_offers "$key" "$val"; then narrowed+=("$f"); fi
         done
         (( ${#narrowed[@]} )) && candidates=("${narrowed[@]}")
     done
@@ -142,5 +160,25 @@ detect_profile() {
     fi
 
     DETECT_PROFILE="${candidates[0]}"
-    profile_load "$DETECT_PROFILE"
+    profile_load "$DETECT_PROFILE" || return 1
+    profile_select_board "$DETECT_BOARD_VERSION"
+}
+
+# detect_board_note -> a line about how well the chosen section fits, or nothing
+# when it fits exactly. Printed by the gate so that running on an undescribed
+# revision is visible rather than silent.
+detect_board_note() {
+    case "$PROFILE_BOARD_MATCH" in
+        exact) return 0 ;;
+        wildcard)
+            printf 'board %s is not described on its own; using this profile'\''s catch-all section.\n' \
+                "${PROFILE_BOARD:-(unreported)}" ;;
+        none)
+            printf 'board %s is not described in %s.\n' \
+                "${PROFILE_BOARD:-(unreported)}" "$(basename "${PROFILE_FILE}")"
+            printf '    Running as '\''probed'\'': only the fixes that work out their own inputs\n'
+            printf '    from this machine. Everything carrying a measured constant stays off,\n'
+            printf '    because it was measured on a different board. A dump from yours is what\n'
+            printf '    changes that: see the tracking issue in docs/SUPPORT.md.\n' ;;
+    esac
 }

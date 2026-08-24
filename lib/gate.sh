@@ -32,13 +32,48 @@ source "$HONOR_ROOT/lib/detect.sh"
 # shellcheck source=/dev/null
 source "$HONOR_ROOT/lib/distro.sh"
 
+# honor_lock <name>
+#
+# One run of a thing at a time. File descriptor 9 by convention, released by the
+# kernel when the process exits, so a script that dies does not leave it held.
+#
+# This exists because patch/fingerprint/install.sh was found running twice at
+# once: its own `pacman -S` named libfprint as a transaction target, which fired
+# the auto-rebuild hook, which deferred a second copy of the same script, and
+# the two raced in one build directory. The same shape is reachable for every
+# fix the deferred rebuild re-runs after a kernel update, so the lock is taken
+# for all of them rather than for the one where it was noticed.
+honor_lock() {
+    # Two statements, not one `local a=.. b=..${a}..`: bash expands every word of
+    # the command before it assigns any of them, so the second would read an
+    # unset variable and die under set -u.
+    local name="$1"
+    local lock="/var/lock/honor-${name}.lock"
+    # Some containers and minimal images have no /var/lock. Tested first rather
+    # than relying on `exec 9>"$lock" 2>/dev/null`: exec applies its
+    # redirections left to right, so fd 9 is opened, and its failure printed,
+    # before 2>/dev/null is in effect. The message reached the user.
+    [[ -d /var/lock ]] || return 0
+    exec 9>"$lock" || return 0
+    if ! flock -n 9; then
+        printf '\033[1;32m==>\033[0m %s\n' \
+            "another run of '${name}' is already in progress; leaving it to that one."
+        exit 0
+    fi
+}
+
 honor_gate() {
     local fix="$1" root="$HONOR_ROOT"
 
     if [[ -n "${HONOR_PROFILE:-}" ]]; then
         profile_load "$HONOR_PROFILE" \
             || _gate_die "HONOR_PROFILE=$HONOR_PROFILE could not be loaded."
+        # The file names the product; the board revision decides which section
+        # of it describes the machine actually running this, and how far it is
+        # trusted. apply_patch.sh passes the file down, not the answer, so the
+        # board has to be chosen here too.
         detect_read_dmi
+        profile_select_board "$DETECT_BOARD_VERSION"
     else
         local rc=0
         detect_profile "$root/devices" || rc=$?
@@ -53,23 +88,38 @@ honor_gate() {
     the template lists the commands and all of them are read-only."
         fi
         printf '\033[1;32m==>\033[0m %s\n' "machine: $(detect_describe)"
-        printf '\033[1;32m==>\033[0m %s\n' "profile: $(profile_get model) ($(profile_get status))"
+        printf '\033[1;32m==>\033[0m %s\n' \
+            "profile: $(profile_get model) board ${PROFILE_BOARD:-?} ($(profile_get status))"
+    fi
+
+    local note
+    note="$(detect_board_note)"
+    if [[ -n "$note" ]]; then
+        printf '\033[1;33m==>\033[0m %s\n' "$note" >&2
     fi
 
     if ! profile_lists_fix "$fix"; then
-        _gate_die "$(profile_get model) does not list '$fix' as a fix it needs.
-    If it does need it, say so in devices/$(basename "${DETECT_PROFILE:-${HONOR_PROFILE:-?}}")."
+        _gate_die "$(profile_get model) board ${PROFILE_BOARD:-?} does not list '$fix' as a fix it needs.
+    If it does need it, say so under the matching [board ...] section in
+    devices/$(basename "${DETECT_PROFILE:-${HONOR_PROFILE:-?}}")."
     fi
 
     if ! fix_allowed "$fix"; then
-        _gate_die "'$fix' is a tier ${FIX_TIER[$fix]} fix and the profile for
+        _gate_die "'$fix' is a tier ${FIX_TIER[$fix]} fix and board ${PROFILE_BOARD:-?} of
     $(profile_get model) is marked '$(profile_get status)'.
 
     Tier B and C fixes carry constants that were measured on one machine: an
     audio subsystem id, a backlight floor, EC register offsets, an ACPI table.
-    They stay disabled until somebody runs them on that model and marks the
-    profile verified."
+    HONOR ships one product code as several boards, so measured on a
+    $(profile_get model) is not the same statement as measured on this one. They
+    stay disabled until somebody runs them on board ${PROFILE_BOARD:-?} and marks
+    that section verified."
     fi
+
+    # Past every refusal, so what follows may build and install. Serialise from
+    # here rather than at the top: a refusal should never wait behind another
+    # run, and two refusals at once are harmless.
+    honor_lock "$fix"
 }
 
 # gate_param <key> <fallback-env-var> -> value
@@ -165,4 +215,113 @@ gate_list_first() {
     profile_has "$1" || return 1
     v="$(profile_get "$1")"
     printf '%s' "${v%% *}"
+}
+
+# gate_hid_devpath <vid:pid>
+# The /sys/bus/hid/devices entry for that id, or nothing. sysfs spells the id in
+# upper case and prefixes it with the bus number, so this is a glob rather than
+# a path; having it in one place is what stops installers writing the id of the
+# machine they were developed on into the glob.
+gate_hid_devpath() {
+    local up="${1^^}" d out=""
+    for d in /sys/bus/hid/devices/*"${up}"*; do
+        [[ -e "$d" ]] && out="$d"
+    done
+    [[ -n "$out" ]] || return 1
+    printf '%s' "$out"
+}
+
+# gate_hwdb_dmi_match
+# The DMI part of a udev hwdb match glob for exactly the machine this is running
+# on, board revision included.
+#
+# The hwdb files in this repository carry a @HONOR_DMI_MATCH@ placeholder rather
+# than a written-out product name. A rule keyed on the product alone applies to
+# every revision HONOR ships under it, which for a battery preset or a keyboard
+# scancode means one board's measurement quietly reaching a board nobody
+# measured. `rvr` is board_version in the DMI modalias; hwdb globs are fnmatch
+# without FNM_PATHNAME, so `*` spans the colons between fields.
+gate_hwdb_dmi_match() {
+    local g="svn${DETECT_VENDOR}*pn${DETECT_PRODUCT}*"
+    [[ -n "$DETECT_BOARD_VERSION" ]] && g+="rvr${DETECT_BOARD_VERSION}*"
+    printf '%s' "$g"
+}
+
+# gate_hwdb_render <template> <destination> [extra sed expressions...]
+# Copies a hwdb template with the placeholder filled in.
+gate_hwdb_render() {
+    local src="$1" dst="$2"
+    shift 2
+    local -a expr=(-e "s|@HONOR_DMI_MATCH@|$(gate_hwdb_dmi_match)|g")
+    local e
+    for e in "$@"; do expr+=(-e "$e"); done
+    install -d -m 0755 "$(dirname "$dst")"
+    sed "${expr[@]}" "$src" > "$dst"
+    chmod 0644 "$dst"
+}
+
+# --- per-device recipes -------------------------------------------------------
+# Several fixes are not one fix but a family: the work needed differs per part,
+# not per laptop. A fingerprint reader needs its own libfprint driver and its own
+# patches; a touchscreen's phantom-key fixup is written against one vendor's
+# report descriptor and means nothing on another.
+#
+# So those fixes keep one directory per device id, each with a recipe.conf, and
+# the installer picks the directory matching the id it found on the bus. Adding
+# support for a second part is then adding a directory, not editing an installer
+# and hoping the machine it was written on still works.
+#
+# The directory is named <vid>-<pid>-<something-readable>, so the id is visible
+# in a file listing and the match is a prefix test.
+
+RECIPE_DIR=""
+declare -gA RECIPE=()
+
+# recipe_find <family-dir> <vid:pid> -> 0 and sets RECIPE_DIR, 1 if none matches
+recipe_find() {
+    local base="$1" id="$2" d
+    RECIPE_DIR=""
+    [[ -d "$base" ]] || return 1
+    for d in "$base"/*/; do
+        [[ -f "${d}recipe.conf" ]] || continue
+        [[ "$(basename "$d")" == "${id/:/-}"-* ]] && RECIPE_DIR="${d%/}"
+    done
+    [[ -n "$RECIPE_DIR" ]]
+}
+
+# recipe_known <family-dir> -> the ids this family covers, for an error message
+recipe_known() {
+    local base="$1" d out=()
+    [[ -d "$base" ]] || { printf 'none'; return 0; }
+    for d in "$base"/*/; do
+        [[ -f "${d}recipe.conf" ]] && out+=("$(basename "$d")")
+    done
+    (( ${#out[@]} )) && printf '%s' "${out[*]}" || printf 'none'
+}
+
+# recipe_load [<recipe-dir>] -> fills RECIPE from recipe.conf
+# Strict key=value, parsed and never sourced, for the same reason a profile is:
+# these files arrive through pull requests from people we do not know.
+recipe_load() {
+    local dir="${1:-$RECIPE_DIR}" line
+    RECIPE=()
+    [[ -f "${dir}/recipe.conf" ]] || return 1
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        line="${line%%$'\r'}"
+        [[ -z "$line" || "$line" == \#* ]] && continue
+        [[ "$line" == *=* ]] || continue
+        RECIPE["${line%%=*}"]="${line#*=}"
+    done < "${dir}/recipe.conf"
+    return 0
+}
+
+# recipe_get <key> [default]
+recipe_get() { printf '%s' "${RECIPE[$1]:-${2:-}}"; }
+
+# recipe_warn_unverified   say so, once, when a recipe has not been run here
+recipe_warn_unverified() {
+    [[ "${RECIPE[status]:-}" == "verified" ]] && return 0
+    printf '\033[1;33m==>\033[0m %s\n' \
+        "this recipe is '${RECIPE[status]:-unknown}': it comes from ${RECIPE[origin]:-elsewhere}
+    and has not been run on hardware by this repository." >&2
 }

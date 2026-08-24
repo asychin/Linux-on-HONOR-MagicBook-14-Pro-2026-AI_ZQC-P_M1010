@@ -2,14 +2,18 @@
 
 | | |
 |---|---|
-| Product code | `ZQC-P`, DMI version `M1010`, board `ZQC-P-PCB` |
+| Product code | `ZQC-P`, board version `M1010`, board `ZQC-P-PCB` |
 | Platform | Intel Panther Lake, Core Ultra X9 388H |
-| Profile | [`devices/zqc-p.conf`](../../devices/zqc-p.conf) — **verified** |
+| Profile | [`devices/zqc-p.conf`](../../devices/zqc-p.conf), section `[board M1010]` — **verified** |
 | Verified on | BIOS 1.10, CachyOS, kernel 7.1.8 |
 
-This is the machine the repository was built on: every value in its profile was
-read off this unit and every fix was run on it. Where a statement below is not
-a measurement taken here, it says whose it is.
+This is the machine the repository was built on: every value in the `[board
+M1010]` section of its profile was read off this unit and every fix was run on
+it. Where a statement below is not a measurement taken here, it says whose it
+is.
+
+**`ZQC-P` is more than one machine.** Everything on this page is board `M1010`
+unless it says otherwise; see [the M1050 revision](#the-m1050-revision).
 
 Other models: [index](README.md).
 
@@ -609,3 +613,105 @@ clause keeps the quirk away. Whether ZQC-P wants it is a separate question —
 it describes a clickpad that wrongly announces `BTN_RIGHT` — and nobody has
 reported that symptom here. Recorded because the next person to grep libinput
 for HONOR will find it and wonder.
+
+## The M1050 revision
+
+`ZQC-P` is not one machine. A second board revision reports the same
+`sys_vendor` and the same `product_name` and differs in the silicon:
+
+| | `M1010`, this unit | `M1050` |
+|---|---|---|
+| CPU | Core Ultra X9 388H | Core Ultra 5 338H |
+| iGPU | Arc, as reported by this machine | Arc B370 |
+| BIOS seen | 1.10 | 1.09 |
+| Touchscreen | FocalTech `2808:5662` | the same |
+| Touchpad | Goodix `27c6:0f9a` | the same |
+| Fingerprint | Goodix `27c6:6f94` | LighTuning EgisTec `1c7a:05aa` |
+| Status | verified | reported |
+
+Source: [issue 1](https://github.com/rs0x29a/Linux-on-HONOR-MagicBook-14-Pro-2026-AI_ZQC-P_M1010/issues/1)
+(the `/proc/bus/input/devices` listing and the BIOS version),
+[issue 8](https://github.com/rs0x29a/Linux-on-HONOR-MagicBook-14-Pro-2026-AI_ZQC-P_M1010/issues/8)
+(the board revision, CPU and iGPU, and the fingerprint reader) and
+[issue 9](https://github.com/rs0x29a/Linux-on-HONOR-MagicBook-14-Pro-2026-AI_ZQC-P_M1010/issues/9),
+all from @pilgrim1990.
+
+### Why this page says which board
+
+Everything on the rest of this page is a measurement taken on `M1010`: the
+backlight floor, the audio subsystem id, the EC tachometer offsets, the battery
+presets the EC enforces, the eDP link budget. None of it has been checked on
+`M1050`, and a different CPU means a different display pipe, a different EC
+firmware build and possibly a different codec.
+
+The profile says so, and that is what the installers act on. The two revisions
+are separate `[board ...]` sections, `M1010` is `verified` and `M1050` is
+`reported`, so a `M1050` unit is offered only the fixes that work their own
+inputs out from the machine in front of them.
+
+What is **not** known about `M1050`: `audio_ssid`, whether the panel is the same
+OLED, `backlight_max`, the EC tachometer offsets, the battery presets, and every
+`param_`. All of those are `unknown` in its section rather than copied down from
+`M1010`. Two read-only commands would fill in most of them:
+
+```sh
+sudo bash tools/collect-hwinfo.sh
+sudo bash tools/dump-acpi.sh
+```
+
+### What it is allowed to run, and why
+
+`[board M1050]` lists nine fixes. That is more than any other non-reference
+board in this repository, and it is earned rather than assumed:
+
+| Fix | Tier | What justifies it |
+|---|---|---|
+| `micmute` | A | the phantom device is in **his own** `/proc/bus/input/devices`: `FTSC1000:00 2808:5662 UNKNOWN`. He also confirmed the fix worked, and noticed when it regressed |
+| `cdclk-ptl` | A | [issue #9](https://github.com/rs0x29a/Linux-on-HONOR-MagicBook-14-Pro-2026-AI_ZQC-P_M1010/issues/9) is his: the screen is garbled during boot on a 7.1 kernel. Panther Lake is confirmed by the CPU |
+| `fingerprint` | A | [issue #8](https://github.com/rs0x29a/Linux-on-HONOR-MagicBook-14-Pro-2026-AI_ZQC-P_M1010/issues/8) is his: the reader did not work and he found the EgisTec SDCP solution himself |
+| `touchpad-edge` | A | the same Goodix `27c6:0f9a` is in his listing, with all three of its collections |
+| `acpi-override` | A | it decides from the md5 of the live `I2C_DEVT` table, not from this profile, and refuses on a mismatch. Listing it cannot install a foreign table |
+| `auto-rebuild` | A | follows: `cdclk-ptl` builds a kernel module and `fingerprint` rebuilds a library |
+| `fan` | B | **refuses** on a `reported` board |
+| `battery` | B | **refuses** on a `reported` board |
+| `hotkeys` | B | **refuses** on a `reported` board |
+
+The last three are listed on purpose even though nothing will run them. A tier B
+fix on an unverified board declines by name and says which value is missing,
+which is more useful than being silently absent. What unlocks them is somebody
+marking `M1050` verified, and that needs a run on that machine, not a decision
+here.
+
+Note `hotkey-actions` is deliberately not listed: it only has anything to do
+once `hotkeys` works, and `hotkeys` refuses here.
+
+### The numbers copied from `M1010`, and why they are inert
+
+`ec_fan0`, `ec_fan1` and `battery_charge_presets` in this section are the values
+measured on `M1010`. Nobody has read them off an `M1050`.
+
+They are recorded because the two boards are the same product from the same EC
+vendor and the maintainer judges them likely to hold, and they are safe to
+record because **nothing can act on them**: `fan` and `battery` are tier B, this
+section is `reported`, so both refuse before reading a single one. The moment
+`M1050` is marked verified they stop being inert, which is the point at which
+somebody has to have checked them on that machine.
+
+What is still genuinely unknown here: `audio_ssid`, whether the panel is the
+same OLED, `backlight_max`, `camera_usb`, and every `param_`. Those are
+`unknown` rather than copied down. Two read-only commands would fill in most:
+
+```sh
+sudo bash tools/collect-hwinfo.sh
+sudo bash tools/dump-acpi.sh
+```
+
+### What was fixed because of this report
+
+Separate from the profile, and it applies to every board. The boot-time
+re-apply service for `micmute` was pointing at a directory a rename had removed,
+so it failed at every boot and the phantom `KEY_MICMUTE` device came back. The
+symptom was reported returning on `M1050` and then reproduced on `M1010`. The
+installer now starts the unit and fails loudly if it cannot, and
+`tools/selftest.sh` checks that every unit in this repository runs a file its
+own installer puts there.

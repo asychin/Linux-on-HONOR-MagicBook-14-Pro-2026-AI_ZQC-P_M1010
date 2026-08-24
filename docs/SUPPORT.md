@@ -8,8 +8,9 @@ that is not coming.
 
 | | |
 |---|---|
-| Machines actually tested here | **one**: a HONOR MagicBook Pro 14 2026, `ZQC-P` |
-| Machines recognised | fourteen profiles across twelve product codes, [docs/hardware/](hardware/) |
+| Machines actually tested here | **one**: a HONOR MagicBook Pro 14 2026, `ZQC-P`, board `M1010` |
+| Machines recognised | seventeen board revisions across twelve product codes, [docs/hardware/](hardware/) |
+| Board revisions with any fix enabled | **two**: `ZQC-P` `M1010` here, and `ZQC-P` `M1050` from a detailed report. The other fifteen recognise the machine and decline |
 | Response time | best effort. Days, sometimes weeks |
 | Guarantee | none. See [LICENSE](../LICENSE) |
 | Cost | nothing, in either direction |
@@ -30,18 +31,29 @@ as soon as somebody with that laptop sends a dump.
 
 ## What "supported" means per status
 
-The word is doing a lot of work and each profile says which sense it means.
+The word is doing a lot of work and each profile says which sense it means, per
+**board revision**. HONOR ships one product code as several machines, so a
+profile carries one section per revision and each has its own status. Check
+which one applies to you with:
+
+```sh
+cat /sys/class/dmi/id/board_version
+```
 
 | Status | What it means | What you should expect |
 |---|---|---|
-| **verified** | the fixes were run on that machine here | it should work; if it does not, that is a bug and worth reporting |
+| **verified** | the fixes were run on that board here | it should work; if it does not, that is a bug and worth reporting |
 | **reported** | somebody ran something on one, in another project | the values are real, the combination is untested. Try it, tell us what happened |
 | **probed** | the device ids come from a hardware probe. No fix was tried | detection will recognise your machine and most fixes will refuse. That refusal is information |
 | **draft** | model and platform only | as above, with less to go on |
 
-Only `verified` unlocks fixes carrying model-specific constants. On everything
-else `ALLOW_UNVERIFIED=1` runs the subset that reads its inputs off the running
-machine, and refuses the rest by name.
+Only `verified` unlocks fixes carrying constants somebody measured. On
+everything else `ALLOW_UNVERIFIED=1` runs the subset that reads its inputs off
+the running machine, and refuses the rest by name.
+
+A board revision no section describes behaves as `probed`. It is never refused
+outright, and it never inherits another revision's `verified`, because the
+constants in that section were measured on a different machine.
 
 ## What this repository will not do
 

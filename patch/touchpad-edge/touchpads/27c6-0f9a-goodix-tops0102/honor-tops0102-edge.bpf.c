@@ -78,15 +78,15 @@
  * the device profile, so a model with a different touchpad does not need a
  * copy of this file; the defaults keep it compilable on its own.
  */
-#ifndef VID_GOODIX
-#define VID_GOODIX		0x27c6
+#ifndef HID_VID
+#define HID_VID		0x27c6
 #endif
-#ifndef PID_TOPS0102
-#define PID_TOPS0102		0x0f9a
+#ifndef HID_PID
+#define HID_PID		0x0f9a
 #endif
 
 HID_BPF_CONFIG(
-	HID_DEVICE(BUS_I2C, HID_GROUP_MULTITOUCH_WIN_8, VID_GOODIX, PID_TOPS0102)
+	HID_DEVICE(BUS_I2C, HID_GROUP_MULTITOUCH_WIN_8, HID_VID, HID_PID)
 );
 
 /* vendor collection carrying the edge gesture */

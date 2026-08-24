@@ -33,10 +33,20 @@
 
 /*
  * Where the tachometers sit in EC RAM. There is no firmware method that
- * describes this, so it is pure driver knowledge and it is per model: the EC
- * layout belongs to the EC firmware, not to the platform. Hanging it off the
- * DMI match keeps a wrong offset from ever reaching a machine it was not
- * measured on.
+ * describes this, so it is knowledge somebody had to measure, and it belongs to
+ * the EC firmware of one board revision rather than to the model.
+ *
+ * Two ways in, in this order:
+ *
+ *   fan0= / fan1=   module parameters, which is how patch/fan/install.sh loads
+ *                   it. The offsets come from the [board ...] section of the
+ *                   device profile that matched this machine, so a revision
+ *                   nobody has measured simply has no offsets to pass and the
+ *                   installer refuses before the module is ever loaded.
+ *   the DMI table   the built-in default, for a hand modprobe with no
+ *                   parameters. It is deliberately narrow: it matches the one
+ *                   board these offsets were measured on, board version and
+ *                   all, so no other revision can inherit them by accident.
  */
 struct honor_ec_layout {
 	u8 fan0_lo, fan0_hi;
@@ -44,11 +54,11 @@ struct honor_ec_layout {
 };
 
 /*
- * HONOR MagicBook Pro 14 2026 (ZQC-P). Measured on this unit: ~2280 / ~2000
- * rpm at 48 degC idle, 3656 / 3276 rpm at 89 degC under a sustained compile.
- * The same offsets were confirmed independently on the sibling FMB-P
- * (colorcube PR #21), but nobody has run this driver there, so FMB-P is
- * deliberately not in the table below.
+ * HONOR MagicBook Pro 14 2026 (ZQC-P), board M1010. Measured on this unit:
+ * ~2280 / ~2000 rpm at 48 degC idle, 3656 / 3276 rpm at 89 degC under a
+ * sustained compile. The same offsets were confirmed independently on the
+ * sibling FMB-P (colorcube PR #21), but nobody has run this driver there, so
+ * FMB-P is deliberately not in the table below.
  */
 static const struct honor_ec_layout honor_ec_zqcp_layout = {
 	.fan0_lo = 0x2c, .fan0_hi = 0x2d,
@@ -56,7 +66,15 @@ static const struct honor_ec_layout honor_ec_zqcp_layout = {
 };
 
 static const struct honor_ec_layout *honor_ec_layout_cur;
+static struct honor_ec_layout honor_ec_layout_param;
 static struct platform_device *honor_ec_pdev;
+
+static unsigned int fan0;
+static unsigned int fan1;
+module_param(fan0, uint, 0444);
+MODULE_PARM_DESC(fan0, "EC RAM offset of the first fan tachometer (low byte; the high byte is the next one)");
+module_param(fan1, uint, 0444);
+MODULE_PARM_DESC(fan1, "EC RAM offset of the second fan tachometer (low byte; the high byte is the next one)");
 
 static int honor_ec_read_fan(u8 lo_addr, u8 hi_addr, long *rpm)
 {
@@ -151,9 +169,18 @@ static const struct hwmon_chip_info honor_ec_hwmon_chip_info = {
  */
 static const struct dmi_system_id honor_ec_dmi_table[] = {
 	{
+		/*
+		 * The board version is part of the match on purpose. HONOR
+		 * ships ZQC-P as at least two machines, M1010 with a Core Ultra
+		 * X9 388H and M1050 with a Core Ultra 5 338H, and only the
+		 * first one was measured. DMI_MATCH is a substring test, so
+		 * without this line the driver would bind on both and report
+		 * whatever the untested board keeps at 0x2c.
+		 */
 		.matches = {
 			DMI_MATCH(DMI_SYS_VENDOR, "HONOR"),
 			DMI_MATCH(DMI_PRODUCT_NAME, "ZQC-P"),
+			DMI_MATCH(DMI_BOARD_VERSION, "M1010"),
 		},
 		.driver_data = (void *)&honor_ec_zqcp_layout,
 	},
@@ -186,14 +213,32 @@ static int __init honor_ec_hwmon_init(void)
 	long rpm;
 	int ret;
 
-	/*
-	 * dmi_first_match rather than dmi_check_system: we need the matched
-	 * entry itself, because the EC layout for this model hangs off it.
-	 */
-	id = dmi_first_match(honor_ec_dmi_table);
-	if (!id)
-		return -ENODEV;
-	honor_ec_layout_cur = id->driver_data;
+	if (fan0 || fan1) {
+		/*
+		 * Offsets handed over by the installer, out of the board
+		 * section of the profile that matched this machine. Both or
+		 * neither: a half-configured layout would read one real fan and
+		 * one arbitrary EC byte.
+		 */
+		if (!fan0 || !fan1 || fan0 > 0xfe || fan1 > 0xfe) {
+			pr_info("honor-ec-sensors: fan0= and fan1= must both be given and be below 0xff\n");
+			return -EINVAL;
+		}
+		honor_ec_layout_param.fan0_lo = fan0;
+		honor_ec_layout_param.fan0_hi = fan0 + 1;
+		honor_ec_layout_param.fan1_lo = fan1;
+		honor_ec_layout_param.fan1_hi = fan1 + 1;
+		honor_ec_layout_cur = &honor_ec_layout_param;
+	} else {
+		/*
+		 * dmi_first_match rather than dmi_check_system: we need the
+		 * matched entry itself, because the EC layout hangs off it.
+		 */
+		id = dmi_first_match(honor_ec_dmi_table);
+		if (!id)
+			return -ENODEV;
+		honor_ec_layout_cur = id->driver_data;
+	}
 
 	/* Refuse to register if the EC does not answer plausibly. */
 	ret = honor_ec_read_fan(honor_ec_layout_cur->fan0_lo, honor_ec_layout_cur->fan0_hi, &rpm);
@@ -226,5 +271,5 @@ static void __exit honor_ec_hwmon_exit(void)
 module_init(honor_ec_hwmon_init);
 module_exit(honor_ec_hwmon_exit);
 
-MODULE_DESCRIPTION("HONOR MagicBook Pro 14 AI (ZQC-P) EC fan hwmon driver");
+MODULE_DESCRIPTION("HONOR MagicBook EC fan tachometer hwmon driver");
 MODULE_LICENSE("GPL");

@@ -106,8 +106,8 @@ HWDB_SRC="${SCRIPT_DIR}/61-honor-battery-charge-limit.hwdb"
 HWDB_DST=/etc/udev/hwdb.d/61-honor-battery-charge-limit.hwdb
 if [[ -f "$HWDB_SRC" ]]; then
     # Keep the shipped rule in step with the preset actually chosen here.
-    sed "s|^ CHARGE_LIMIT=.*| CHARGE_LIMIT=${CHARGE_PRESET// /,}|" "$HWDB_SRC" > "$HWDB_DST"
-    chmod 0644 "$HWDB_DST"
+    gate_hwdb_render "$HWDB_SRC" "$HWDB_DST" \
+        "s|@HONOR_CHARGE_LIMIT@|${CHARGE_PRESET// /,}|g"
     if command -v systemd-hwdb >/dev/null; then
         systemd-hwdb update
         udevadm trigger --action=change /sys/class/power_supply/BAT* 2>/dev/null || true

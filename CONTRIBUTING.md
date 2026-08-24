@@ -23,31 +23,48 @@ DMI, picks the matching file in [`devices/`](devices/), and stops if there is
 none. That is deliberate: step 2 installs an ACPI table dumped from one
 specific unit's firmware, and a foreign SSDT is not a fix that fails quietly.
 
-Each profile carries a `status`:
+A profile is one file per product, holding one `[board ...]` section per board
+revision, and each section carries its own `status`. HONOR ships one product
+code as several machines, so trust is per board: `ZQC-P` board `M1010` is
+`verified` here and board `M1050` is `reported`, in the same file.
 
 | `status` | Meaning | What may run |
 |---|---|---|
-| `verified` | somebody ran these fixes on that machine | everything the profile lists |
+| `verified` | somebody ran these fixes on that board | everything that section lists |
 | `reported` | built from a hardware dump, never run | tier A only, and only with `ALLOW_UNVERIFIED=1` |
 | `draft` | assembled from public information | same as `reported` |
+
+A board revision no section describes is not refused. It keeps the product
+identity and runs as `probed`, and every fix declines by name.
+
+**Almost every profile enables nothing.** Their data came from hardware probe
+databases and other people's repositories, which says what is in a machine, not
+that anything was installed on it. A fix is listed when somebody runs it on that
+board and reports back. Sending that report is the single most useful thing
+anybody with one of these laptops can do, and `ZQC-P` `M1050` is there to show
+it works: nine fixes are listed on that board because its owner reported in
+detail three times.
 
 Fixes are sorted into trust tiers in [`lib/profile.sh`](lib/profile.sh):
 
 - **A** derives its inputs from the running machine, or matches on a device id
   and finds nothing on hardware it was not meant for. Safe to offer anywhere.
 - **B** carries model specific constants, an audio subsystem id, a measured
-  backlight floor, EC register offsets. Needs `status=verified`.
+  backlight floor, EC register offsets. Needs `status=verified` on the section
+  matching the board in front of you.
 - **C** installs a binary taken from one machine's firmware. Only ever from
   that machine.
 
-So on an unverified model the answer to "why did it skip everything
+So on an unverified board the answer to "why did it skip everything
 interesting" is: because nobody has confirmed those constants on your
 hardware yet. Sending the dump is how that changes.
 
-Check what you have:
+Check what you have. The third line is the one that decides which section
+applies, and it is the one people forget to include in a report:
 
 ```sh
-cat /sys/class/dmi/id/sys_vendor /sys/class/dmi/id/product_name
+cat /sys/class/dmi/id/sys_vendor /sys/class/dmi/id/product_name \
+    /sys/class/dmi/id/board_version
 ls devices/
 ```
 
@@ -141,9 +158,9 @@ HONOR_ZQC-P_M1010/
 │   ├── collect-hwinfo.sh           # read-only hardware dump for a new profile
 │   ├── dump-acpi.sh                # read-only ACPI table dump
 │   └── selftest.sh                 # run this after touching a profile or a lib
-├── devices/                        # one profile per supported machine
-│   ├── zqc-p.conf                  #   the reference unit, status=verified
-│   ├── xwc-p.conf ... fmi-xx.conf  #   thirteen more, recognised but unverified
+├── devices/                        # one profile per product, one section per board
+│   ├── zqc-p.conf                  #   [board M1010] verified, [board M1050] reported
+│   ├── xwc-p.conf ... fmi-xx.conf  #   thirteen more, recognised, all fixes off
 │   └── TEMPLATE.conf               #   field by field reference for a new one
 ├── lib/
 │   ├── profile.sh                  # profile parser, validator and trust tiers

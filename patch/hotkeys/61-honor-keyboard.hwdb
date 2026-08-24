@@ -17,13 +17,18 @@
 # working while the keymap is untouched. Verified here by writing both forms
 # through the same ioctl udev uses: e078 rejected, f8 accepted.
 #
-# And the match is per model rather than every HONOR laptop. f8 is a real key
-# index; silencing it on a model that uses it for something would break that
-# key. Only models where this has actually been observed belong here.
+# And the match is per BOARD rather than every HONOR laptop, or even every unit
+# of one product. f8 is a real key index; silencing it on a machine that uses it
+# for something would break that key. HONOR ships one product code as several
+# boards, so "observed on a ZQC-P" is not the same statement as "true of every
+# ZQC-P".
+#
+# This is a template. patch/hotkeys/install.sh fills in @HONOR_DMI_MATCH@ with
+# the vendor, product and board revision of the machine it is running on, and
+# the fix is tier B, so it only runs at all on a board somebody has verified.
 #
 # To add yours: press the hotkeys, look for "Unknown key pressed ... code 0xNN"
-# in dmesg, and add a line with your product name and that NN.
+# in dmesg, and record it on your board's page under docs/hardware/.
 
-# HONOR MagicBook Pro 14 2026 — observed and verified here
-evdev:atkbd:dmi:bvn*:bvr*:bd*:svnHONOR*:pnZQC-P*
+evdev:atkbd:dmi:bvn*:bvr*:bd*:@HONOR_DMI_MATCH@
  KEYBOARD_KEY_f8=unknown

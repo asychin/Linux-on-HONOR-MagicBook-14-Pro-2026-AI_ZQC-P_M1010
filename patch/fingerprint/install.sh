@@ -50,6 +50,16 @@ die()  { printf '\033[1;31m==>\033[0m %s\n' "$*" >&2; exit 1; }
 source "${REPO_DIR}/../../lib/gate.sh"
 honor_gate fingerprint
 
+# --- 1b. why one run at a time matters especially here ------------------------
+# honor_gate has already taken the per-fix lock. This is the script that made it
+# necessary: it runs `pacman -S --needed` for its build dependencies, the
+# patched libfprint it produced last time is in that dependency closure, so
+# pacman lists libfprint as a target, so 96-honor-libfprint.hook fires, so
+# rebuild.sh defers a second copy of this very script. The two then raced in one
+# build directory, and the loser reported a failure for a machine that was in
+# fact correctly patched: the deferred run logged `fingerprint: ok` while the
+# foreground one printed "makepkg failed".
+
 # The same model ships different readers in different regions, so the profile
 # lists what it is known to carry and we go and see which one is actually here.
 if [[ -n "${FP_VID_PID:-}" ]]; then
@@ -70,27 +80,18 @@ log "Found fingerprint reader $FP_VID_PID"
 # Each reader needs its own libfprint driver, its own patches, and sometimes a
 # different source tree entirely. sensors/<vid>-<pid>-<driver>/recipe.conf says
 # which, so nobody has to go and find the work in somebody else's repository.
-SENSOR_DIR=""
-for d in "${REPO_DIR}"/sensors/*/; do
-    [[ -f "${d}recipe.conf" ]] || continue
-    [[ "$(basename "$d")" == "${FP_VID_PID/:/-}"-* ]] && SENSOR_DIR="${d%/}"
-done
-if [[ -z "$SENSOR_DIR" ]]; then
-    die "the reader here is $FP_VID_PID and this repository has no recipe for it.
-    Covered: $(cd "${REPO_DIR}/sensors" && echo */ | tr -d '/')
+#
+# recipe_find and recipe_load are in lib/gate.sh, shared with the other fixes
+# that are a family rather than a single fix: patch/micmute/touchscreens/ and
+# patch/touchpad-edge/touchpads/ are laid out the same way and read the same way.
+recipe_find "${REPO_DIR}/sensors" "$FP_VID_PID" || die \
+    "the reader here is $FP_VID_PID and this repository has no recipe for it.
+    Covered: $(recipe_known "${REPO_DIR}/sensors")
 
     If you get one working, a recipe here would be very welcome:
     see patch/fingerprint/README.md for the layout."
-fi
-
-# recipe.conf is strict key=value and is parsed, not sourced.
-declare -A RECIPE=()
-while IFS= read -r line; do
-    line="${line%%$'\r'}"
-    [[ -z "$line" || "$line" == \#* ]] && continue
-    [[ "$line" == *=* ]] || continue
-    RECIPE["${line%%=*}"]="${line#*=}"
-done < "${SENSOR_DIR}/recipe.conf"
+SENSOR_DIR="$RECIPE_DIR"
+recipe_load
 
 FP_NAME="${RECIPE[name]:-$FP_VID_PID}"
 FP_SOURCE="${RECIPE[source]:-distro}"
@@ -105,9 +106,59 @@ esac
 [[ -n "$FP_PATCHES" ]] || die "${SENSOR_DIR}/recipe.conf names no patches"
 
 log "sensor: $FP_NAME  (${RECIPE[driver]:-?} driver, source=${FP_SOURCE})"
-[[ "${RECIPE[status]:-}" == "verified" ]] || warn \
-    "this recipe is '${RECIPE[status]:-unknown}': it comes from ${RECIPE[origin]:-elsewhere}
-    and has not been run on hardware by this repository."
+recipe_warn_unverified
+
+# --- 1c. has this already been done ------------------------------------------
+# Same idea and same place as lib/xe-build.sh's module stamp: record what was
+# built, and do nothing when the answer has not changed.
+#
+# It matters more here than it looks. Section 5 runs `pacman -S fprintd
+# libfprint`, which names libfprint as a target of the transaction, which fires
+# 96-honor-libfprint.hook, which defers another run of this script. Without this
+# check every run builds libfprint twice: once in the foreground and once in the
+# deferred unit that its own pacman call scheduled.
+#
+# The stamp is deliberately keyed on the INSTALLED package version, so a real
+# libfprint upgrade, which is what that hook exists for, does not match and the
+# rebuild happens.
+FP_STAMP=/var/lib/honor/fingerprint.stamp
+fp_installed_version() {
+    if command -v pacman >/dev/null 2>&1; then
+        pacman -Q libfprint 2>/dev/null | awk '{print $2}'
+    else
+        printf 'not-a-package'
+    fi
+}
+fp_stamp_matches() {
+    [[ -r "$FP_STAMP" ]] || return 1
+    local k
+    for k in sensor recipe patches libfprint; do
+        local want have
+        case "$k" in
+            sensor)    want="$FP_VID_PID" ;;
+            recipe)    want="$(basename "$SENSOR_DIR")" ;;
+            patches)   want="$FP_PATCHES" ;;
+            libfprint) want="$(fp_installed_version)" ;;
+        esac
+        have="$(sed -n "s/^${k}=//p" "$FP_STAMP")"
+        [[ "$have" == "$want" ]] || return 1
+    done
+    return 0
+}
+fp_write_stamp() {
+    install -d -m 0755 /var/lib/honor
+    printf '%s\n' \
+        "# written by patch/fingerprint/install.sh" \
+        "sensor=${FP_VID_PID}" \
+        "recipe=$(basename "$SENSOR_DIR")" \
+        "patches=${FP_PATCHES}" \
+        "libfprint=$(fp_installed_version)" > "$FP_STAMP"
+}
+if [[ "${FORCE:-0}" != "1" ]] && fp_stamp_matches; then
+    log "already applied: libfprint $(fp_installed_version) carries $FP_NAME."
+    log "Nothing to rebuild. Use FORCE=1 to build it again anyway."
+    exit 0
+fi
 
 # A patch that predates your libfprint will either fail loudly or, worse, apply
 # with fuzz into the wrong place. Say so before building anything.
@@ -358,6 +409,7 @@ PYEOF
     [[ -n "$PKGFILE" ]] || die "makepkg produced no package in $PKGDIR"
     log "Installing $(basename "$PKGFILE")"
     pacman -U --noconfirm "$PKGFILE" || die "pacman -U failed"
+    fp_write_stamp
 else
     log "Installing patched libfprint to /usr"
     ninja -C build install >/dev/null || die "install failed"
@@ -368,6 +420,10 @@ else
         elif command -v dnf     >/dev/null 2>&1; then dnf install -y fprintd fprintd-pam
         fi
     fi
+    # Off the package manager there is no version to key on, so the stamp only
+    # records what was built. A libfprint upgrade there overwrites /usr without
+    # anything noticing, which is what the caveat at the end of this script says.
+    fp_write_stamp
 fi
 
 systemctl daemon-reload || true

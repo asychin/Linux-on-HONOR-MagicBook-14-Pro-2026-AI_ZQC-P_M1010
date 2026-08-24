@@ -22,9 +22,9 @@ reachable over the standard ACPI EC interface:
 0x2C/0x2D -> fan 0        0x2E/0x2F -> fan 1
 ```
 
-`honor-ec-sensors.c` is a small DMI-gated module (`HONOR` / `ZQC-P`) that reads
-them via `ec_read()` and exposes `fan1_input` / `fan2_input` under the chip name
-`honor_ec`, so `sensors`, `btop` and desktop widgets show fan RPM.
+`honor-ec-sensors.c` is a small module that reads them via `ec_read()` and
+exposes `fan1_input` / `fan2_input` under the chip name `honor_ec`, so
+`sensors`, `btop` and desktop widgets show fan RPM.
 
 ```sh
 sudo bash patch/fan/install.sh
@@ -33,6 +33,36 @@ sensors        # look for "honor_ec-isa-0000"
 
 Uses DKMS when available so it survives kernel updates. Accepts `KVER=...` to
 pre-build for an installed-but-not-yet-booted kernel.
+
+### Where the offsets come from
+
+They are recorded in **one** place, `ec_fan0` and `ec_fan1` in the board section
+of the device profile, and the installer hands them to the module:
+
+```
+/etc/modprobe.d/honor-ec-sensors.conf
+options honor-ec-sensors fan0=0x2c fan1=0x2e
+```
+
+They used to live a second time in a DMI table inside the driver. That was two
+records of one fact, free to drift, and worse, the DMI entry matched on
+`DMI_PRODUCT_NAME` alone. `DMI_MATCH` is a substring test, so a module carrying
+offsets measured on `ZQC-P` board `M1010` bound just as happily to board
+`M1050`, which is a different machine with a different CPU that nobody has
+measured, and reported whatever that EC keeps at `0x2c` as a fan speed.
+
+The driver still carries a built-in default so a bare `modprobe` works on the
+one board it was measured on, and that entry now matches the board revision too.
+Everything else comes through the profile:
+
+```c
+DMI_MATCH(DMI_SYS_VENDOR, "HONOR"),
+DMI_MATCH(DMI_PRODUCT_NAME, "ZQC-P"),
+DMI_MATCH(DMI_BOARD_VERSION, "M1010"),
+```
+
+Adding a board is therefore adding `ec_fan0` and `ec_fan1` to its section of
+`devices/`, read out of that machine's own DSDT. Nothing in the driver changes.
 
 ## Measured behaviour
 

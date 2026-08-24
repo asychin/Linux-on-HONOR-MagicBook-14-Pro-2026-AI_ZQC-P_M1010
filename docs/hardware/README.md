@@ -7,9 +7,20 @@ prose that a profile deliberately does not carry.
 
 ## What the status words mean
 
+Almost every profile ships with **no fixes enabled**: the data below describes
+the machine, it is not a report that anything was installed on it. The
+exceptions are `ZQC-P` `M1010`, measured here, and `ZQC-P` `M1050`, whose owner
+reported in detail. See [the note in the README](../../README.md#models).
+
+A status belongs to a **board revision**, not to a model. HONOR ships one
+product code as several machines, so a profile has one `[board ...]` section per
+revision and each carries its own status. A revision nobody has described runs
+as `probed`: it keeps what is known about the product and never inherits another
+board's measurements.
+
 | Status | What somebody actually did | What the installer allows |
 |---|---|---|
-| **verified** | ran these fixes on that machine | everything the profile lists |
+| **verified** | ran these fixes on that board | everything that section lists |
 | **reported** | ran something on that machine and wrote it down, in another project | tier A only, and only with `ALLOW_UNVERIFIED=1` |
 | **probed** | uploaded a hardware probe. The ids are real, no fix was tried | the same as reported |
 | **draft** | nothing. Model and platform from published specifications | the same |
@@ -27,14 +38,15 @@ Moving a model up a row takes one person and one afternoon:
 
 **The MagicBook Pro line**, which is what this repository is built around:
 
-| Model | Machine | Platform | Status | Page |
-|---|---|---|---|---|
-| `ZQC-P` | MagicBook Pro 14 2026 (AI) | Panther Lake | verified | [zqc-p.md](zqc-p.md) |
-| `XWC-P` | MagicBook Pro 16 2026 | Panther Lake | reported | [xwc-p.md](xwc-p.md) |
-| `FMB-P` | MagicBook Pro 14 2025 | Arrow Lake H | reported | [fmb-p.md](fmb-p.md) |
-| `FMB-PM` | MagicBook Pro 14 2025 Geek Edition | Meteor Lake | reported | [fmb-pm.md](fmb-pm.md) |
-| `DRB-P` | MagicBook Pro 16 2025, and HUNTER | Arrow Lake H | draft / probed | [drb-p.md](drb-p.md) |
-| `DRA-XX` | MagicBook Pro 16 2024, and HUNTER | Meteor Lake | probed | [dra-xx.md](dra-xx.md) |
+| Model | Board | Machine | Platform | Status | Page |
+|---|---|---|---|---|---|
+| `ZQC-P` | `M1010` | MagicBook Pro 14 2026 (AI) | Panther Lake | verified | [zqc-p.md](zqc-p.md) |
+| `ZQC-P` | `M1050` | the same, Core Ultra 5 338H | Panther Lake | reported | [zqc-p.md](zqc-p.md#the-m1050-revision) |
+| `XWC-P` | `M1110`, `M1120` | MagicBook Pro 16 2026 | Panther Lake | reported, one section each | [xwc-p.md](xwc-p.md) |
+| `FMB-P` | five, one section each | MagicBook Pro 14 2025 | Arrow Lake H | probed | [fmb-p.md](fmb-p.md) |
+| `FMB-PM` | `M1030` | MagicBook Pro 14 2025 Geek Edition | Meteor Lake | reported | [fmb-pm.md](fmb-pm.md) |
+| `DRB-P` | `M1020`, and unknown | MagicBook Pro 16 2025, and HUNTER | Arrow Lake H | draft / probed | [drb-p.md](drb-p.md) |
+| `DRA-XX` | `M1020`, `M1030`, `M1040` | MagicBook Pro 16 2024, and HUNTER | Meteor Lake | probed, one section each | [dra-xx.md](dra-xx.md) |
 
 **Machines from the other MagicBook lines** that share the platform or a part,
 and are recognised for that reason:

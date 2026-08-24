@@ -5,9 +5,15 @@ on them. If you have one, an afternoon of your time moves it from "we know the
 model exists" to "this works, here is what to install".
 
 Nothing here asks you to trust the repository blindly. The installers refuse by
-default on a machine whose profile is not `verified`, and the subset they will
-run without that is deliberately limited to fixes that cannot carry another
+default on a board whose profile section is not `verified`, and the subset they
+will run without that is deliberately limited to fixes that cannot carry another
 machine's values.
+
+Note the word **board**. HONOR ships one product code as several machines, so
+what matters is `cat /sys/class/dmi/id/board_version`, not the name on the box.
+A revision this repository has never seen is recognised and run at the lowest
+trust rather than refused, and it never inherits a status somebody earned on a
+different board.
 
 ---
 
@@ -135,10 +141,11 @@ that list is precisely what the model still needs.
 
 ## What comes back to you
 
-A dump and a filled-in report turn into a device profile and a page under
-[`docs/hardware/`](hardware/) with your findings and your name against them.
-If you then run the fixes and they work, the profile becomes `verified`, and
-the next owner of your laptop gets the whole thing working from one command.
+A dump and a filled-in report turn into a `[board ...]` section in a device
+profile and a page under [`docs/hardware/`](hardware/) with your findings and
+your name against them. If you then run the fixes and they work, that section
+becomes `verified`, and the next owner of the same board gets the whole thing
+working from one command.
 
 If something breaks, say so plainly and it gets recorded as plainly. A page
 that says "the fingerprint reader does not work and here is why" is worth more

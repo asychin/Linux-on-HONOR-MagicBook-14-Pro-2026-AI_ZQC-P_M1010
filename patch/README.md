@@ -53,11 +53,38 @@ minutes. The backlight floor defaults to `VBT_MIN=12`, measured on
 two units; run [`oled-backlight/measure-floor.sh`](oled-backlight/measure-floor.sh)
 if you want to check it against your own panel.
 
-Each installer also stands alone and is safe to re-run:
+## One fix at a time
+
+Every fix installs and removes on its own, from any directory, without going
+through `apply_patch.sh`:
 
 ```sh
 sudo bash patch/touchpad-edge/install.sh
+sudo bash patch/touchpad-edge/uninstall.sh
 ```
+
+Both are safe to re-run. Installing twice is a no-op; removing something that
+was never installed says so and exits cleanly.
+
+The two are not symmetrical in one respect, on purpose. **Installing is gated**:
+the device profile has to describe this machine and list the fix, because
+installing is a decision about hardware. **Removing is not gated.** The moments
+when somebody most needs to take a fix off are exactly the ones where a gate
+would refuse: the fix was dropped from the profile, a BIOS update changed the
+DMI strings, the machine was recognised as the wrong board, or they are
+reverting before filing a bug report. See [`lib/uninstall.sh`](../lib/uninstall.sh).
+
+`uninstall_patch.sh` is an orchestrator over these: it calls each
+`patch/<fix>/uninstall.sh` in order, then rebuilds the initramfs and the
+bootloader config once at the end rather than fifteen times.
+
+Two of them will make the machine worse if you run them without reading the
+output first:
+
+| | |
+|---|---|
+| `acpi-override/uninstall.sh` | the touchpad and touchscreen stop working at the next boot |
+| `keyboard-atkbd/uninstall.sh` | on a kernel without the upstream `atkbd` quirk, removing `i8042.dumbkbd=1` can leave you at a login screen with no internal keyboard. Have a USB keyboard to hand |
 
 ## Surviving updates
 

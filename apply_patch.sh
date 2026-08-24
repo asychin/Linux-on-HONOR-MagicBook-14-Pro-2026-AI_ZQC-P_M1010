@@ -184,14 +184,22 @@ STATUS="$(profile_get status)"
 # print the banner a second time.
 export HONOR_PROFILE="$DETECT_PROFILE"
 echo "Machine  : $(detect_describe)"
-echo "Profile  : $MODEL ($(profile_get name)), status=$STATUS"
+echo "Profile  : $MODEL ($(profile_get name)), board ${PROFILE_BOARD:-?}, status=$STATUS"
+# HONOR ships one product code as several boards. Say plainly when the one in
+# front of us is not the one somebody measured, rather than letting the status
+# line above imply more than it means.
+BOARD_NOTE="$(detect_board_note)"
+if [[ -n "$BOARD_NOTE" ]]; then
+    echo
+    echo "Note     : $BOARD_NOTE"
+fi
 
 if [[ "$STATUS" != "verified" ]]; then
     if [[ "${ALLOW_UNVERIFIED:-0}" != "1" ]]; then
         cat >&2 <<EOF
 
-The profile for $MODEL is marked '$STATUS', which means nobody has run these
-fixes on that machine. Refusing to continue.
+Board ${PROFILE_BOARD:-?} of $MODEL is marked '$STATUS', which means nobody has run
+these fixes on that machine. Refusing to continue.
 
 You can install the subset that cannot go wrong on unverified hardware, the
 fixes that read their inputs off the running machine or match on a device id
@@ -199,8 +207,9 @@ and simply find nothing elsewhere:
 
     sudo ALLOW_UNVERIFIED=1 ./apply_patch.sh
 
-Everything carrying model specific values stays disabled until somebody
-verifies the profile and updates devices/$(basename "$DETECT_PROFILE").
+Everything carrying a measured value stays disabled until somebody runs it on
+this board and marks the [board ${PROFILE_BOARD:-?}] section of
+devices/$(basename "$DETECT_PROFILE") verified.
 
 EOF
         exit 1
@@ -275,6 +284,13 @@ fix_enabled() {
     fi
     return 0
 }
+
+# A step that warns is a step the user asked for and did not get. They are
+# counted so the end of the run can say how many, and so the exit status means
+# something to a script: uninstall_patch.sh already works that way and the two
+# behaving differently was just an accident of age.
+STEP_WARNINGS=0
+step_warn() { printf '    [warn] %s\n' "$*"; STEP_WARNINGS=$((STEP_WARNINGS + 1)); }
 
 mkdir -p "$BACKUP"
 
@@ -467,7 +483,10 @@ fi
 # FILES lands in the main compressed archive and the ACPI loader only reads the
 # early CPIO. Drop just those paths, not the whole array, because FILES= is a
 # list and somebody else's entries may be in it.
-if grep -qE '^FILES=\(.*\/usr\/lib\/firmware\/acpi\/' /etc/mkinitcpio.conf; then
+# Slashes are not escaped: this is an ERE, where \/ is an undefined escape and
+# GNU grep 3.8 and newer prints "stray \ before /" for each one. Five of them
+# meant five warnings on every run of this step.
+if grep -qE '^FILES=\(.*/usr/lib/firmware/acpi/' /etc/mkinitcpio.conf; then
     sed -i -E 's@/usr/lib/firmware/acpi/[^ )"'"'"']*@@g' /etc/mkinitcpio.conf
     # tidy the double spaces that leaves inside the parentheses
     sed -i -E 's@^(FILES=\()[[:space:]]+@\1@; s@[[:space:]]+\)@)@; s@[[:space:]]{2,}@ @g' /etc/mkinitcpio.conf
@@ -566,7 +585,7 @@ elif ! fix_enabled oled-backlight; then
 elif REGEN=0 bash "$PATCH_DIR/oled-backlight/install.sh"; then
     echo "    OK"
 else
-    echo "    [warn] backlight fix failed — everything else still applies;"
+    step_warn "backlight fix failed — everything else still applies;"
     echo "    only the lowest brightness steps stay blotchy. Inspect"
     echo "    patch/oled-backlight/install.sh output above."
 fi
@@ -610,7 +629,7 @@ elif { [[ "${WITH_CDCLK:-0}" == "1" ]] && fix_enabled cdclk-ptl \
          && REGEN=0 bash "$PATCH_DIR/edp-dsc/install.sh"; }; then
     echo "    OK"
 else
-    echo "    [warn] the xe.ko rebuild failed — everything else still applies."
+    step_warn "the xe.ko rebuild failed — everything else still applies."
     echo "    The boot-time glitch and the panel colour depth stay as they were."
     echo "    Inspect the installer output above."
 fi
@@ -624,8 +643,8 @@ fi
 # nor the early ACPI CPIO from step 3 would take effect at the next boot.
 #────────────────────────────────────────────────────────────────────────
 echo "[8/18] Rebuild initramfs and bootloader config"
-distro_initramfs_rebuild || echo "    [warn] rebuild the initramfs yourself before rebooting"
-distro_bootloader_update || echo "    [warn] regenerate your bootloader config yourself before rebooting"
+distro_initramfs_rebuild || step_warn "rebuild the initramfs yourself before rebooting"
+distro_bootloader_update || step_warn "regenerate your bootloader config yourself before rebooting"
 
 #────────────────────────────────────────────────────────────────────────
 # [9/18] Build + install ALC256 codec quirk for the 3.5mm-jack headset mic.
@@ -643,7 +662,7 @@ if ! fix_enabled headset-mic; then
 elif bash "$PATCH_DIR/headset-mic/install.sh"; then
     echo "    OK"
 else
-    echo "    [warn] ALC256 quirk install failed — touchpad/touchscreen fix is"
+    step_warn "ALC256 quirk install failed — touchpad/touchscreen fix is"
     echo "    still applied; only the analog headset mic on the 3.5mm jack will"
     echo "    stay unavailable. Inspect patch/headset-mic/install.sh output above."
 fi
@@ -667,7 +686,7 @@ if ! fix_enabled sof-audio; then
 elif bash "$PATCH_DIR/sof-audio/install.sh"; then
     echo "    OK"
 else
-    echo "    [warn] SOF IPC4 fix install failed — earlier steps are still"
+    step_warn "SOF IPC4 fix install failed — earlier steps are still"
     echo "    applied; only the Fn+F7 mic-mute stability after suspend/resume"
     echo "    on Panther Lake will be affected. Inspect"
     echo "    patch/sof-audio/install.sh output above."
@@ -687,7 +706,7 @@ if ! fix_enabled micmute; then
 elif bash "$PATCH_DIR/micmute/install.sh"; then
     echo "    OK"
 else
-    echo "    [warn] HID-BPF fixup install failed — earlier steps are still"
+    step_warn "HID-BPF fixup install failed — earlier steps are still"
     echo "    applied; only the self-toggling microphone will be affected."
     echo "    Inspect patch/micmute/install.sh output above."
 fi
@@ -707,7 +726,7 @@ elif [[ "${SKIP_EDGE:-0}" == "1" ]]; then
 elif bash "$PATCH_DIR/touchpad-edge/install.sh" >/dev/null; then
     echo "    OK"
 else
-    echo "    [warn] edge-gesture fix failed — earlier steps still apply;"
+    step_warn "edge-gesture fix failed — earlier steps still apply;"
     echo "    only the left-edge brightness gesture will stay dead."
 fi
 
@@ -725,7 +744,7 @@ elif [[ "${SKIP_FAN:-0}" == "1" ]]; then
 elif bash "$PATCH_DIR/fan/install.sh" >/dev/null; then
     echo "    OK"
 else
-    echo "    [warn] fan sensor module failed to build — earlier steps still"
+    step_warn "fan sensor module failed to build — earlier steps still"
     echo "    apply; only the RPM readout will be missing."
 fi
 
@@ -745,7 +764,7 @@ elif ! command -v makepkg >/dev/null; then
 elif bash "$PATCH_DIR/fingerprint/install.sh"; then
     echo "    OK"
 else
-    echo "    [warn] libfprint rebuild failed — earlier steps still apply;"
+    step_warn "libfprint rebuild failed — earlier steps still apply;"
     echo "    only the fingerprint reader will stay unusable. Inspect"
     echo "    patch/fingerprint/install.sh output above."
 fi
@@ -764,7 +783,7 @@ if ! fix_enabled battery; then
 elif bash "$PATCH_DIR/battery/install.sh" >/dev/null; then
     echo "    OK — $(grep -oE '"'"'[0-9]+ [0-9]+'"'"' /etc/honor-battery.conf 2>/dev/null | head -1)"
 else
-    echo "    [warn] battery limit failed — everything else still applies."
+    step_warn "battery limit failed — everything else still applies."
 fi
 
 #────────────────────────────────────────────────────────────────────────
@@ -779,7 +798,7 @@ if ! fix_enabled hotkeys; then
 elif bash "$PATCH_DIR/hotkeys/install.sh" >/dev/null; then
     echo "    OK"
 else
-    echo "    [warn] hotkey mapping failed — the affected Fn keys stay dead."
+    step_warn "hotkey mapping failed — the affected Fn keys stay dead."
 fi
 
 #────────────────────────────────────────────────────────────────────────
@@ -795,7 +814,7 @@ if ! fix_enabled hotkey-actions; then
 elif bash "$PATCH_DIR/hotkey-actions/install.sh" >/dev/null; then
     echo "    OK"
 else
-    echo "    [warn] hotkey actions failed — the keys still arrive, nothing acts on them."
+    step_warn "hotkey actions failed — the keys still arrive, nothing acts on them."
 fi
 
 #────────────────────────────────────────────────────────────────────────
@@ -813,7 +832,7 @@ elif ! command -v pacman >/dev/null; then
     echo "    skipped — not a pacman system. Re-run patch/headset-mic/install.sh"
     echo "    and patch/sof-audio/install.sh after every kernel update."
 else
-    echo "    [warn] hook install failed — the fixes still work, but a kernel"
+    step_warn "hook install failed — the fixes still work, but a kernel"
     echo "    update will revert steps [9/18] and [10/18] until you re-run them."
     echo "    Step [7/18] is not hooked either: rerun it by hand after a"
     echo "    kernel update, or drop it once the fix lands upstream."
@@ -880,3 +899,9 @@ After reboot, verify:
   # patch/sof-audio/install.sh so the codec quirk and the SOF overlay are
   # rebuilt against the new headers. patch/micmute/ needs nothing.
 EOF
+
+if (( STEP_WARNINGS )); then
+    printf '\n%d step(s) reported a problem. Everything else was applied; read the\n' "$STEP_WARNINGS"
+    printf '[warn] lines above to see what is missing and why.\n'
+    exit 1
+fi

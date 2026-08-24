@@ -36,20 +36,82 @@ as much as the dump: a fix nobody needs is not worth carrying.
 Copy [`devices/TEMPLATE.conf`](../devices/TEMPLATE.conf) to
 `devices/<model-in-lowercase>.conf` and fill it in from the dump.
 
-The fields are in two groups and the split decides what the installers will
-let you do:
+### The shape: a small base block, then one section per board revision
+
+HONOR ships one product code as several different machines. `ZQC-P` is board
+`M1010` with a Core Ultra X9 388H here, and board `M1050` with a Core Ultra 5
+338H in the report on [issue #1](https://github.com/rs0x29a/Linux-on-HONOR-MagicBook-14-Pro-2026-AI_ZQC-P_M1010/issues/1).
+`FMB-P` is five board revisions across three SKUs. Same `sys_vendor`, same
+`product_name`, different hardware.
+
+So a profile is not a flat list of facts about a product. It is:
+
+```
+model=ZQC-P
+name=HONOR MagicBook Pro 14 2026 (AI)
+year=2026
+dmi_vendor=HONOR
+dmi_product=ZQC-P
+
+[board M1010]
+status=verified
+platform=pantherlake
+audio_ssid=1ee7:209d
+param_backlight_min=12
+fixes=acpi-override oled-backlight headset-mic fan battery ...
+
+[board M1050]
+status=reported
+platform=pantherlake
+fingerprint_usb=1c7a:05aa
+fixes=acpi-override micmute touchpad-edge fingerprint ...
+```
+
+The base block holds **five keys and no others**: `model`, `name`, `year`,
+`dmi_vendor`, `dmi_product`. They identify the product and they are what selects
+the file. Everything else is a reading, a measurement or a decision about one
+board revision, so it has to be claimed by a section. The parser enforces this;
+a hardware id or a `status` in the base block is an error, not a style
+preference. It is an error because it is the bug this format exists to prevent:
+before board sections, `status=verified` on the ZQC-P profile applied to every
+ZQC-P that ever booted this repository, `M1050` included, along with the
+backlight floor, the audio subsystem id, the EC tachometer offsets and the
+battery presets measured on `M1010`.
+
+Two extra forms:
+
+* `[board M1110 M1120]` when several revisions are provably the same machine.
+  That takes evidence and usually there is none: the two XWC-P units differ in
+  webcam supplier, DRA-XX `M1030` and `M1040` differ in CPU and in fingerprint
+  reader. No profile here uses a merged header, and `tools/selftest.sh` rejects
+  one until somebody does the comparison.
+* `[board *]` when the product's revisions are genuinely unknown. `DRB-P` is the
+  only honest case: no probe of a machine without the discrete GPU exists. It is
+  not a default for revisions that ARE known, and selftest rejects it beside
+  named sections.
+
+A machine whose `board_version` matches no section, in a profile with no
+`[board *]`, keeps the product identity and runs as `probed`. It is never
+refused, and it never inherits somebody else's `verified`.
+
+### What goes in a section
 
 **Hardware inventory** is fact, and all of it is in the dump:
 
 | Field | Where in the dump |
 |---|---|
-| `dmi_*` | the `DMI` section |
-| `dmi_board_version` | `board_version` in the same section: `M1010`, `M1020` … |
+| the section header | `board_version` in the `DMI` section: `M1010`, `M1020` … |
+| `dmi_board`, `dmi_sku` | the `DMI` section |
+| `platform`, `cpu` | the CPU model. `cpu` is inventory only, nothing matches on it |
 | `touchscreen_hid`, `touchpad_hid` | `HID devices`, the directory name is `BUS:VID:PID` |
 | `audio_ssid` | `audio subsystem id` |
-| `fingerprint_usb` | `USB`, the Goodix or Elan reader |
+| `fingerprint_usb` | `USB`, the Goodix, EgisTec or Elan reader |
 | `panel`, `backlight_max` | `backlight`, plus whether the panel is OLED |
 | `ec_fan0`, `ec_fan1` | the tachometer fields in that machine's DSDT |
+
+There is deliberately **no `dmi_board_version` key**. The section header is the
+board revision, and a second place to write it down is a second place for it to
+be wrong.
 
 **Fix parameters**, the `param_` ones, are not in the dump and cannot be. They
 are decisions somebody made with the laptop in front of them:
@@ -61,7 +123,7 @@ a wrong one gets acted upon. Write `none` when you have looked and the part is
 genuinely absent, which is a different statement and the only one that justifies
 leaving a fix off the list.
 
-### Two traps in the DMI section
+### Two traps in the DMI values
 
 **`dmi_product` is what the firmware says, not what the box said.** HONOR
 sometimes wildcards the digits: every 2024 MagicBook Pro 16 reports the literal
@@ -71,19 +133,31 @@ exact, not one of them could ever have fired. Copy the string out of the dump.
 
 **`dmi_sku` does not identify a model here.** `C233` is reported by ZQC-P,
 XWC-P, an FMB-P, a DRA-XX and a BCC-N. Record it, but detection tries
-`dmi_board` and `dmi_board_version` first and falls back to `dmi_sku` last,
+`dmi_board` and the board revision first and falls back to `dmi_sku` last,
 where it can only confirm a choice already narrowed.
 
 ### Which fixes to list
 
-`fixes=` means "this model needs this". List one when that follows from a value
-already in the profile, not from a hunch:
+**None, until somebody runs one on that board and reports back.** Almost every
+section in `devices/` ships with `fixes=` empty. The two that do not are `ZQC-P`
+`M1010`, the machine this repository has, and `ZQC-P` `M1050`, whose owner
+reported in enough detail across three issues to justify nine of them.
+
+A profile whose `fixes=` is empty still does real work: it identifies the
+machine, records what is in it, and makes every installer refuse by name instead
+of acting. That refusal is the correct behaviour on hardware nobody has tested,
+and it is what the whole board-section design exists to make possible.
+
+The table below is the checklist for *after* a report arrives. It is not a
+licence to fill the field in from a hardware dump: a probe is somebody else's
+`lshw` output, not evidence that anything was installed and worked.
 
 | Recorded fact | Follows |
 |---|---|
 | `platform=pantherlake` | `cdclk-ptl`, `sof-audio` |
 | `panel=oled` on a link that cannot carry 8 bpc, **measured** | `edp-dsc` |
-| `touchscreen_hid=2808:5662`, the FocalTech panel | `micmute` |
+| `touchscreen_hid`, **and** a program for that id under `patch/micmute/touchscreens/` | `micmute` |
+| `touchpad_hid`, **and** a program for that id under `patch/touchpad-edge/touchpads/` | `touchpad-edge` |
 | `panel=oled` | `oled-backlight` |
 | `fingerprint_usb`, **and** a recipe for that id under `patch/fingerprint/sensors/` | `fingerprint` |
 | `ec_fan0` / `ec_fan1` | `fan` |
@@ -94,60 +168,67 @@ already in the profile, not from a hunch:
 predicts it: whether PSR2 selective update is visible on a given panel is a
 property of that panel, and the only honest way to find out is to move the
 pointer across a flat grey window and look. List it once somebody has seen the
-band on that model, not because the machine has an Intel iGPU and an eDP panel.
+band on that board, not because the machine has an Intel iGPU and an eDP panel.
 
 A recorded `fingerprint_usb` on its own is **not** enough. `27c6:5f10` and
 `10a5:a921` are both real readers on real machines here and neither has a
 recipe, so listing `fingerprint` for them would produce a fix that patches the
-wrong id into the wrong driver.
+wrong id into the wrong driver. The same goes for `touchscreen_hid` and
+`touchpad_hid`: those fixes rewrite one chip's report descriptor.
 
-Listing a tier B fix on a profile that is not `verified` is still worth doing:
-it will refuse, and the refusal names what is missing. That is more useful than
-silence.
+Once a fix is listed, listing a tier B one on a section that is not yet
+`verified` is still worth doing: it will refuse, and the refusal names what is
+missing. That is more useful than silence.
 
-### When one model has several hardware variants
+### When one board ships different parts
 
 This is common: the same laptop ships a Goodix fingerprint reader in one market
-and a LighTuning one in another, and both report the same DMI product name.
+and an EgisTec one in another, and both report the same DMI, right down to the
+board revision.
 
-If the difference is **visible on the running machine**, and a USB, HID or PCI
-id always is, do not split the profile. List the possibilities:
+That is not a reason for another section, because the difference is **visible on
+the running machine** and a USB, HID or PCI id always is. List the
+possibilities:
 
 ```
 fingerprint_usb=27c6:6f94 1c7a:05aa
 ```
 
-The installer probes the bus and uses the one actually fitted, so a single
-profile covers both units. A field with one value behaves exactly as before.
+The installer probes the bus and uses the one actually fitted, so one section
+covers both units. A field with one value behaves exactly as a one-element list.
 `touchscreen_hid`, `touchpad_hid` and `audio_ssid` work the same way.
 
-Where the variants need **different code**, not just a different id, the
-installer maps the detected device to the right patch and refuses cleanly when
-it has none for what it found. That is better than applying the wrong one: the
-Chinese sensor above needs libfprint's SDCP support, so adding its id to the
-Goodix table would achieve nothing.
+Keep the two kinds of identifier straight:
 
-Split into separate profiles only when the difference is **not** visible at
-runtime, for example an EC layout or a measured backlight floor. Then you need
-a discriminator DMI can see, and they are tried in this order: `dgpu` (which
-separates the HUNTER variants from the UMA ones), then `dmi_board`, then
-`dmi_board_version`, then `dmi_sku`.
+* the **board revision** is a discriminator. It has to be read from DMI before
+  any fix runs, and it decides which section applies and how far it is trusted.
+* everything else is **inventory**. It is in sysfs once the machine is up, so an
+  installer confirms it against the bus rather than trusting the file. Never add
+  an inventory key to what detection narrows on.
 
-`dmi_board_version` is usually the one that works. Five FMB-P board revisions
-share one product name; three DRA-XX configurations differ only by it.
+Where the variants need **different code**, not just a different id, the fix
+keeps one directory per device and the installer picks the one matching what it
+found: `patch/fingerprint/sensors/`, `patch/micmute/touchscreens/`,
+`patch/touchpad-edge/touchpads/`. It refuses cleanly when it has none, which is
+better than applying the wrong one: the EgisTec sensor above needs libfprint's
+SDCP support, so adding its id to the Goodix table would achieve nothing.
 
 Check it parses:
 
 ```sh
 bash -c 'source lib/profile.sh; profile_load devices/<model>.conf && echo ok'
+bash tools/selftest.sh
 ```
 
 Unknown keys are an error, not a warning, so a typo cannot silently drop a
-value.
+value. `selftest.sh` additionally proves that a revision your profile does not
+describe cannot come out `verified`.
 
 ## 3. Verify it, then say so
 
-A new profile is `draft`, `probed` or `reported`:
+A new section is `draft`, `probed` or `reported`. The status belongs to the
+board, not to the product: one profile can hold a `verified` section and a
+`reported` one, and that is the normal case once a second unit turns up.
 
 | | What somebody did |
 |---|---|
@@ -164,9 +245,9 @@ simply find nothing on hardware they were not meant for.
 sudo ALLOW_UNVERIFIED=1 ./apply_patch.sh
 ```
 
-Everything else stays disabled until somebody runs it on that model and it
-works. When that happens, set `status=verified` and record what it was verified
-against:
+Everything else stays disabled until somebody runs it on **that board** and it
+works. When that happens, set `status=verified` in that section and record what
+it was verified against:
 
 ```
 status=verified
@@ -175,9 +256,9 @@ verified_bios=1.04
 verified_distro=Ubuntu 24.04
 ```
 
-Please do not set `verified` on the strength of a spec sheet or a DSDT that
-looks similar to ours. The whole point of the field is that somebody took the
-risk on real hardware.
+Please do not set `verified` on the strength of a spec sheet, a DSDT that looks
+similar to ours, or a different revision of the same product. The whole point of
+the field is that somebody took the risk on that exact hardware.
 
 ## What the fixes need beyond a profile
 
@@ -188,11 +269,13 @@ or a binary rather than a number:
 |---|---|
 | `acpi-override` | the same table, or its own. The installer compares the md5 of your live `I2C_DEVT` against the stock one in `dump/acpi/` and refuses unless they match, so a model that happens to ship the identical table is covered for free — ZQC-P and XWC-P do — and one that does not gets a clean refusal. If yours differs, rebuild it from your own tables with `build/build_patch.sh` and [RESEARCH.md](RESEARCH.md) |
 | `headset-mic` | possibly a new `alc269.c` fixup. The installer refuses if `param_audio_fixup` names one it does not know how to emit |
-| `fan` | its EC offsets added to the DMI table in `patch/fan/honor-ec-sensors.c` as their own `honor_ec_layout`. The installer refuses if the model is not in that table, and the module would refuse to load anyway |
+| `fan` | `ec_fan0` and `ec_fan1` for that board, read out of its own DSDT. The installer passes them to the module as parameters, so nothing has to be added to the driver; it refuses if the section does not record them |
 
-`fingerprint` is in between: the id comes from the profile, but the libfprint
-patch adds one specific id, so a different reader needs its own patch file. The
-installer compares the two and refuses on a mismatch.
+`fingerprint`, `micmute` and `touchpad-edge` are in between: the id comes from
+the section and is confirmed on the bus, but the code is per device. Each keeps
+a directory per part, named `<vid>-<pid>-<something-readable>` with a
+`recipe.conf` in it, and the installer picks the one matching what it found.
+Adding support for a second part is adding a directory, not editing an installer.
 
 ## Which fixes even apply
 
