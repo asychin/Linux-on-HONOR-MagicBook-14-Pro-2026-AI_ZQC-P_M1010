@@ -1,0 +1,60 @@
+# What this does and does not check.
+#
+# It runs tools/selftest.sh, which is a consistency check of the repository
+# against itself. No root, no hardware, no network. Concretely it proves:
+#
+#   * every devices/*.conf parses, and a reading, a measurement or a status
+#     cannot be written into the base block where it would apply to every board
+#     revision of that product;
+#   * a section describes one board revision, and a catch-all is not used as a
+#     default for revisions that are known;
+#   * detection picks the right file AND the right board section for each
+#     model's recorded DMI, two profiles can never both match one machine, and
+#     a revision no section describes never comes out `verified`;
+#   * every fix a profile names exists, has a trust tier, and is called;
+#   * no device id is written into anything that gets installed, every hwdb rule
+#     is filled in from the running machine, every systemd unit runs a file its
+#     own installer puts there, and every installer resolves its own location so
+#     it works run on its own from any directory;
+#   * nothing in the tree looks like a licence key or an MSDM table;
+#   * every shell script parses and passes ShellCheck at -S warning, and every
+#     python file parses.
+#
+# It does NOT and cannot check:
+#
+#   * that any fix installs. That needs root, kernel headers, a compiler, the
+#     distribution's package manager and network access.
+#   * that any fix is correct or safe on hardware. There is no HONOR laptop in
+#     CI, and there is exactly one in this project.
+#   * that a profile's contents are true. A wrong audio subsystem id parses
+#     perfectly.
+#
+# So a green tick here means "the repository is internally consistent and
+# nothing is nailed to one machine". It is not evidence that anything works on
+# your laptop. That evidence only comes from somebody running it on theirs and
+# saying what happened, which is what docs/TESTING.md asks for.
+#
+# One job on purpose: selftest already runs `bash -n` and ShellCheck itself, so
+# a second job doing either would be a second place to keep in step, and only
+# one of them would be the one contributors actually run before pushing.
+name: checks
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  selftest:
+    runs-on: ubuntu-latest
+    steps:
+      # Pinned to a commit, not a tag. A tag is a moving reference somebody else
+      # controls, and this workflow runs on pull requests from strangers.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.2.2
+      - name: Install ShellCheck
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends shellcheck
+      - name: Repository self-test
+        run: bash tools/selftest.sh
