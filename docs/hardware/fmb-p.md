@@ -251,7 +251,7 @@ also matches every `svnHONOR*` machine rather than one model.
 ## Not established
 
 `backlight_max` — no probe collects `/sys/class/backlight`, and no project
-records it. `param_backlight_min` — has to be measured on the panel with
+records it. The backlight floor — has to be measured on the panel with
 [`patch/oled-backlight/measure-floor.sh`](../../patch/oled-backlight/measure-floor.sh);
 the reference machine's `12` is a Panther Lake figure and must not be copied
 here.

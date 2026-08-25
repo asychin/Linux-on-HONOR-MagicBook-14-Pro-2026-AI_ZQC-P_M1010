@@ -4,7 +4,7 @@
 |---|---|
 | Product code | `ZQC-P`, board version `M1010`, board `ZQC-P-PCB` |
 | Platform | Intel Panther Lake, Core Ultra X9 388H |
-| Profile | [`devices/zqc-p.conf`](../../devices/zqc-p.conf), section `[board M1010]` — **verified** |
+| Profile | [`devices/zqc-p.conf`](../../devices/zqc-p.conf) — both sections **verified**, `[board M1010]` measured here and [`[board M1050]`](#the-m1050-revision) from its owner |
 | Verified on | BIOS 1.10, CachyOS, kernel 7.1.8 |
 
 This is the machine the repository was built on: every value in the `[board
@@ -283,8 +283,7 @@ xe 0000:00:02.0: [drm] Selective fetch area calculation failed in pipe A
 
 ### 6 bpc with dithering, because DSC is off
 
-Understood, measured, and not fixed. The pipe runs at 18 bits per pixel, six
-per colour, with dithering on:
+The pipe runs at 18 bits per pixel, six per colour, with dithering on:
 
 ```
 $ sudo cat /sys/kernel/debug/dri/0000:00:02.0/i915_display_info
@@ -293,48 +292,9 @@ $ sudo cat /sys/kernel/debug/dri/0000:00:02.0/i915_display_info
 	port_clock=540000, lane_count=4
 ```
 
-The driver says why itself, with `drm.debug=0x04` set across a modeset:
-
-```
-[CONNECTOR:512:eDP-1] Limiting target display pipe bpp to 30
-    (EDID bpp 30, max requested bpp 36, max platform bpp 36)
-[ENCODER:511:DDI A/PHY A][CRTC:151:pipe A] DP link limits: pixel clock 900864 kHz
-    DSC off max lanes 4 max rate 540000 max pipe_bpp 30
-    min link_bpp 18.0000 max link_bpp 30.0000
-DP lane count 4 clock 540000 bpp input 18 compressed 0.0000 HDR no
-    link rate required 2026944 available 2160000
-[CRTC:151:pipe A] hw max bpp: 30, pipe bpp: 18, dithering: 1
-```
-
-The panel declares 10 bits per colour in its EDID and the platform would go to
-12, so the ceiling is not the panel. It is the link: 2026944 of the 2160000
-available is what 18 bpp costs, and 24 bpp would cost 2702592. There is no
-`Try DSC` line anywhere in that log, because the driver never gets that far.
-Compression is only considered when the uncompressed path fails:
-
-```c
-	dsc_needed = joiner_needs_dsc || intel_dp->force_dsc_en ||
-		     !intel_dp_compute_config_limits(...);
-
-	if (!dsc_needed) {
-		ret = intel_dp_compute_link_config_wide(...);
-		...
-		if (ret || !intel_dp_dotclk_valid(...))
-			dsc_needed = true;
-	}
-```
-
-and the uncompressed path does not fail, because `intel_dp_min_bpp()` lets it
-go down to 6 bpc for RGB. Dropping colour depth to make a mode fit is
-deliberate, and old: it arrived as
-[Dither down to 6bpc if it makes the mode fit](https://patchwork.kernel.org/project/intel-gfx/patch/1311174531-23070-1-git-send-email-ajax@redhat.com/)
-in 2011, when the alternative was no picture at all. On a panel that also
-supports DSC the alternative is no longer that.
-
-#### There is no faster link to be had
-
-The panel was asked directly over `/dev/drm_dp_aux0`, which is the eDP AUX
-channel for this connector:
+The ceiling is the link, not the panel: the EDID declares 10 bits per colour
+and the platform would go to 12. Asked directly over the eDP AUX channel at
+`/dev/drm_dp_aux0`, the panel offers two link rates and the faster is HBR2:
 
 ```
 DPCD 0x000 DPCD_REV       0x14  ->  DP 1.4
@@ -344,61 +304,18 @@ DPCD 0x010 eDP SUPPORTED_LINK_RATES, 16-bit LE, units of 200 kHz:
            13500 -> 2.70 Gbps        27000 -> 5.40 Gbps        (rest zero)
 ```
 
-Two rates, and the higher one is HBR2. There is no HBR3 on this panel, so
-17.28 Gbit/s of payload is the hard ceiling and no configuration reaches 8 bpc
-uncompressed at this pixel clock.
+No HBR3, so 17.28 Gbit/s of payload is the hard ceiling and nothing reaches 8
+bpc uncompressed at this pixel clock. Dropping to the 60 Hz mode does not help either: it
+carries the same link load, measured rather than assumed, and the reason is
+worked through in the fix's README.
 
-The 60 Hz mode does not help either, which is worth writing down because it
-looks like it should. It is the same pixel clock with the vertical blanking
-doubled, `vtotal` 2208 becomes 4416 and `clock` stays 900864, so the link
-carries exactly the same load and the pipe stays at 18 bpp. Measured, not
-assumed.
+The panel does support DSC and the firmware does not object. Why the driver
+never asks, and the patch that makes it, are in
+[`patch/edp-dsc/README.md`](../../patch/edp-dsc/README.md); it is opt-in
+because it rebuilds `xe.ko`. Measured on this unit before and after, at the
+120 Hz mode in use:
 
-#### DSC works on this panel
-
-Forced on through `i915_dsc_fec_support` and committed with a real modeset, at
-the 120 Hz mode that is actually in use:
-
-| | stock | DSC forced |
-|---|---|---|
-| pipe bpp | 18 (6 bpc) | **30 (10 bpc)** |
-| dithering | yes | **no** |
-| link rate required | 2026944 of 2160000 | **900864 of 2160000** |
-
-```
-DP DSC computed with Input Bpp = 30 Compressed Bpp = 8.0000 Slice Count = 4
-```
-
-4 slices of 780x130, block prediction on, line buffer 11 bits, RGB. The link
-was then read back from the panel while compression was live:
-
-```
-DPCD 0x202/0x203 LANE0..3   CR=1 EQ=1 SYM_LOCK=1 on all four lanes
-DPCD 0x204                  INTERLANE_ALIGN_DONE=1
-DPCD 0x210..0x216           SYMBOL_ERROR_COUNT = 0 on all four lanes
-Sink PSR error status       0x0
-```
-
-and the picture was checked by eye: no artefacts, no flicker, correct colours.
-
-The firmware does not object either. `edp_dsc_disable` in VBT block 27
-(`BDB_EDP`) reads `0x0000`, and in fact every byte of that region of the block
-is zero, so no panel type is excluded:
-
-```
-block 40 (BDB_LFP_OPTIONS): panel_type = 2
-block 27 (BDB_EDP), offsets 740..848: all zero
-edp_dsc_disable = 0x0000
-```
-
-So all three parties agree DSC is available and it demonstrably works. The
-driver simply never asks, because 6 bpc satisfied it first.
-
-#### The fix, and what it produces
-
-Measured on the reference unit after the change, at the 120 Hz mode in use:
-
-| | stock | shipped |
+| | stock | with the fix |
 |---|---|---|
 | pipe bpp | 18, six per colour | **30, ten per colour** |
 | dithering | yes | **no** |
@@ -407,37 +324,14 @@ Measured on the reference unit after the change, at the 120 Hz mode in use:
 | sink PSR error latch | `0x1 PSR Link CRC error` | `0x0` |
 
 `Force_DSC_Enable: no` alongside `DSC_Enabled: yes` is the point: compression is
-being chosen by the driver, not forced through debugfs. The panel's own link
-status agrees, read back over AUX: clock recovery, equalisation and symbol lock
-on all four lanes, interlane alignment done, and zero symbol errors.
+being chosen by the driver, not forced through debugfs.
 
-`Force_DSC_Enable` lives in debugfs and nowhere else, and there is no module
-parameter for it, so making this stick means changing the driver.
-[`patch/edp-dsc/`](../../patch/edp-dsc/) carries a patch that, on eDP, prefers
-compression over settling below 8 bits per colour, and puts the uncompressed
-result back if the DSC pass fails so it can never turn a working mode into a
-rejected one. It is opt-in, because it rebuilds `xe.ko`.
-
-That module is shared with [`patch/cdclk-ptl/`](../../patch/cdclk-ptl/), so
-both patches are built together by
-[`lib/xe-build.sh`](../../lib/xe-build.sh) and neither installer can silently
-drop the other's change. What went into the installed module is recorded in
-`/var/lib/honor/xe-module.stamp`.
-
-One detail took a second attempt to get right and is worth knowing if anybody
-rebases this. `intel_dp_compute_config_limits()` derives the DSC input depth
-from `crtc_state->pipe_bpp`, which by then holds whatever the uncompressed
-search settled for. Handing that back produced 8 bits per colour instead of 10,
-because 18 clamps up to the DSC minimum of 24 and stops. The patch restores the
-depth the modeset arrived with before computing the DSC limits.
-
-Two things are still unknown and are worth knowing before relying on it.
-Suspend and resume with compression live has not been tested. And under DSC the
-PSR2 selective update region has to align to the DSC slice height rather than
-the panel's own granularity, 130 lines here instead of a handful, which would
-make [the band](#the-panel-is-driven-at-6-bits-per-colour) taller rather than
-smaller; that is moot while PSR is held at PSR1, which this machine needs
-anyway.
+Two things about this machine are still unknown. Suspend and resume with
+compression live has not been tested here. And under DSC the PSR2 selective
+update region has to align to the DSC slice height, 130 lines on this panel
+instead of a handful, which would make [the band](#the-band-that-follows-the-pointer)
+taller rather than smaller; moot while PSR is held at PSR1, which this machine
+needs anyway.
 
 ## The keyboard and the Caps Lock LED
 
@@ -471,12 +365,12 @@ time, because the EC does not engage them until around 72 °C.
 
 **ACPI.** The DSDT declares a global `Method (GFNS, 1, Serialized)` that returns
 `FA0L`/`FA0R` for fan 0 and `FA1L`/`FA1R` for fan 1, selected by a byte at offset
-2 of the argument buffer. That is exactly the interface of
-[patch 14751797](https://patchwork.kernel.org/project/linux-hwmon/patch/20260815234041.2262291-1-testname142@gmail.com/),
-"hwmon: Add fan monitoring support for HONOR FMI-XX" by Nikita Dubrovskih,
-**accepted on linux-hwmon** 2026-08-15. When that driver reaches mainline it
-should read this machine's fans without any out-of-tree module, and
-`patch/fan/` becomes redundant. Its DMI gate will need a `ZQC-P` entry.
+2 of the argument buffer. That is byte for byte the contract an accepted
+upstream driver already implements for another HONOR machine, which is why
+[`fmi-xx.md`](fmi-xx.md#why-this-machine-matters-to-a-magicbook-pro) is in this
+directory at all. When that driver reaches mainline it should read this
+machine's fans with no out-of-tree module, and `patch/fan/` becomes redundant;
+its DMI gate will need a `ZQC-P` entry.
 
 **Setting a speed: no.** `SFNS` is gated behind `MFGM`, which no AML path ever
 sets; the DPTF fan participant `TFN1` accepts writes and does nothing; and
@@ -617,101 +511,189 @@ for HONOR will find it and wonder.
 ## The M1050 revision
 
 `ZQC-P` is not one machine. A second board revision reports the same
-`sys_vendor` and the same `product_name` and differs in the silicon:
+`sys_vendor` and the same `product_name`, and until August 2026 that was nearly
+all anybody here knew about it. It now has a hardware dump and a full set of
+ACPI tables, both taken on the machine itself, so most of this section is a
+measurement rather than an inference.
 
 | | `M1010`, this unit | `M1050` |
 |---|---|---|
-| CPU | Core Ultra X9 388H | Core Ultra 5 338H |
-| iGPU | Arc, as reported by this machine | Arc B370 |
-| BIOS seen | 1.10 | 1.09 |
+| CPU | Core Ultra X9 388H, 16 logical CPUs | Core Ultra 5 338H, 12 logical CPUs |
+| iGPU | Arc B390, PCI `8086:b080` | Arc B370, PCI `8086:b081` |
+| Host bridge | PCI `8086:b001` | PCI `8086:b004` (PTL-H444) |
+| BIOS seen | 1.10 (2026-06-03) | 1.10 (2026-06-03) |
+| Panel | EDO 14.55" OLED, 3120x2080 at 120 Hz | the same, and the same VBT byte for byte |
+| Backlight | `intel_backlight`, `max_brightness` 704 | the same |
+| Audio codec | ALC256, subsystem `1ee7:209d` | the same |
 | Touchscreen | FocalTech `2808:5662` | the same |
 | Touchpad | Goodix `27c6:0f9a` | the same |
 | Fingerprint | Goodix `27c6:6f94` | LighTuning EgisTec `1c7a:05aa` |
+| Webcam | Shinetech `3277:00de` | the same |
+| SSD in the unit seen | YMTC PC411 `1e49:1071` | KIOXIA BG6 `1e0f:001a` |
 | Status | verified | reported |
 
-Source: [issue 1](https://github.com/rs0x29a/Linux-on-HONOR-MagicBook-14-Pro-2026-AI_ZQC-P_M1010/issues/1)
-(the `/proc/bus/input/devices` listing and the BIOS version),
+Sources, all from @pilgrim1990:
+[issue 1](https://github.com/rs0x29a/Linux-on-HONOR-MagicBook-14-Pro-2026-AI_ZQC-P_M1010/issues/1)
+(the first `/proc/bus/input/devices` listing),
 [issue 8](https://github.com/rs0x29a/Linux-on-HONOR-MagicBook-14-Pro-2026-AI_ZQC-P_M1010/issues/8)
-(the board revision, CPU and iGPU, and the fingerprint reader) and
-[issue 9](https://github.com/rs0x29a/Linux-on-HONOR-MagicBook-14-Pro-2026-AI_ZQC-P_M1010/issues/9),
-all from @pilgrim1990.
+(the board revision, the CPU and the fingerprint reader),
+[issue 9](https://github.com/rs0x29a/Linux-on-HONOR-MagicBook-14-Pro-2026-AI_ZQC-P_M1010/issues/9)
+(boot-time screen corruption) and
+[issue 11](https://github.com/rs0x29a/Linux-on-HONOR-MagicBook-14-Pro-2026-AI_ZQC-P_M1010/issues/11)
+(`collect-hwinfo` archive, `dump-acpi` tables and a full `apply_patch.sh` log).
 
-### Why this page says which board
+The SSD is in the table to be discounted: it is a build option, not a property
+of the board, and nothing in this repository looks at it.
 
-Everything on the rest of this page is a measurement taken on `M1010`: the
-backlight floor, the audio subsystem id, the EC tachometer offsets, the battery
-presets the EC enforces, the eDP link budget. None of it has been checked on
-`M1050`, and a different CPU means a different display pipe, a different EC
-firmware build and possibly a different codec.
+### What the dump settled: it is the same firmware
 
-The profile says so, and that is what the installers act on. The two revisions
-are separate `[board ...]` sections, `M1010` is `verified` and `M1050` is
-`reported`, so a `M1050` unit is offered only the fixes that work their own
-inputs out from the machine in front of them.
+The two machines were expected to differ in more than the CPU. They do not. The
+ACPI tables from `M1050` were compared against the `M1010` set in
+[`dump/win11/zqc-p/OEM/`](../../dump/win11/zqc-p/OEM/), matched by OEM table id
+rather than by file number, because `acpidump` and the Windows-side dump number
+them differently.
 
-What is **not** known about `M1050`: `audio_ssid`, whether the panel is the same
-OLED, `backlight_max`, the EC tachometer offsets, the battery presets, and every
-`param_`. All of those are `unknown` in its section rather than copied down from
-`M1010`. Two read-only commands would fill in most of them:
+* **DSDT: 243659 bytes, and 11 of them differ.** One is the header checksum.
+  The other ten are runtime base addresses the firmware stamps in at boot: the
+  `GNVS`, `OGNS` and `MDBG` operation regions and the `TCNB`, `IPNB`, `IGNB`,
+  `HBNB`, `VMNB`, `TSNB` and `PNVB` name constants. Disassembled and diffed, the
+  eleven differing lines are all of that shape, and no operator, method or field
+  declaration differs anywhere. Every method this repository touches, `IFCI`,
+  `GFCI`, `SBCM`, `GBCM`, `SFNS`, is the same code.
+* **Of his 30 SSDTs, 17 are byte-identical** and 10 more differ only in the
+  checksum and the same kind of address stamp. `WmiTable`, which carries the
+  hotkey dispatcher, is in the second group: its one difference is
+  `OperationRegion (HNVS, SystemMemory, ...)` pointing 0x20000 higher. Of the
+  remaining three, `Cpu0Ist` is the CPU (below), `I2C_DEVT` is his copy of our
+  override rather than his firmware's table, and `Cnv_Ssdt` has no counterpart
+  because the `M1010` set was dumped from Windows and does not contain it.
+* **What genuinely differs is the CPU.** `Cpu0Ist` carries a different P-state
+  table (top state 0x0FA1 against 0x0E75, 4001 MHz against 3701 MHz), and `APIC`
+  lists 16 processor entries against 12.
+* **The panel VBT is byte-identical.** His 7680-byte VBT differs from the
+  factory blob saved on this machine at exactly two offsets, 3772 and 3957,
+  which are the two bytes `patch/oled-backlight/` writes, and both his read 6
+  before it wrote 12. The rest matches: version 266, panel type 2, DDI native
+  PWM at 200 Hz, 8 precision bits, default level 35/255. Same panel, same
+  backlight controller.
 
-```sh
-sudo bash tools/collect-hwinfo.sh
-sudo bash tools/dump-acpi.sh
-```
+So the EC field map is not an assumption on this board. The `ec_fan0=0x2c` and
+`ec_fan1=0x2e` in [`patch/fan/zqc-p/M1050/`](../../patch/fan/zqc-p/M1050/) are
+read straight out of his own DSDT, where `Offset (0x2C)` is
+followed by `FA0L`, `FA0R`, `FA1L`, `FA1R`, and `Offset (0x85)` by `CHMD`, which
+is the charge-mode byte `patch/battery/` checks.
 
-### What it is allowed to run, and why
+`I2C_DEVT` could not be compared. The dump was taken with the ACPI override
+already installed, so what came back is this repository's patched table rather
+than his firmware's, which `dump-acpi.sh` said at the time and `MACHINE.txt`
+records. It is not needed: `patch/acpi-override/` decides from the md5 of the
+live table and refuses on a mismatch, and his install log shows it recognising
+the override it had already placed.
 
-`[board M1050]` lists nine fixes. That is more than any other non-reference
-board in this repository, and it is earned rather than assumed:
+### What the `verified` on this section rests on
 
-| Fix | Tier | What justifies it |
-|---|---|---|
-| `micmute` | A | the phantom device is in **his own** `/proc/bus/input/devices`: `FTSC1000:00 2808:5662 UNKNOWN`. He also confirmed the fix worked, and noticed when it regressed |
-| `cdclk-ptl` | A | [issue #9](https://github.com/rs0x29a/Linux-on-HONOR-MagicBook-14-Pro-2026-AI_ZQC-P_M1010/issues/9) is his: the screen is garbled during boot on a 7.1 kernel. Panther Lake is confirmed by the CPU |
-| `fingerprint` | A | [issue #8](https://github.com/rs0x29a/Linux-on-HONOR-MagicBook-14-Pro-2026-AI_ZQC-P_M1010/issues/8) is his: the reader did not work and he found the EgisTec SDCP solution himself |
-| `touchpad-edge` | A | the same Goodix `27c6:0f9a` is in his listing, with all three of its collections |
-| `acpi-override` | A | it decides from the md5 of the live `I2C_DEVT` table, not from this profile, and refuses on a mismatch. Listing it cannot install a foreign table |
-| `auto-rebuild` | A | follows: `cdclk-ptl` builds a kernel module and `fingerprint` rebuilds a library |
-| `fan` | B | **refuses** on a `reported` board |
-| `battery` | B | **refuses** on a `reported` board |
-| `hotkeys` | B | **refuses** on a `reported` board |
+Firmware being identical is not the same as a fix having been run and watched.
+Both things are true here, and they are not equally true of all fifteen fixes,
+so this is worth setting out plainly rather than behind one word.
 
-The last three are listed on purpose even though nothing will run them. A tier B
-fix on an unverified board declines by name and says which value is missing,
-which is more useful than being silently absent. What unlocks them is somebody
-marking `M1050` verified, and that needs a run on that machine, not a decision
-here.
+**Its owner had already been running the whole set.** Before boards were split,
+`ZQC-P` was one flat profile and everything in it was applied to this machine
+too. The install log in
+[issue 11](https://github.com/rs0x29a/Linux-on-HONOR-MagicBook-14-Pro-2026-AI_ZQC-P_M1010/issues/11)
+is that run, and nothing in it was reported as having gone wrong.
 
-Note `hotkey-actions` is deliberately not listed: it only has anything to do
-once `hotkeys` works, and `hotkeys` refuses here.
+That log is also the reason the evidence is uneven. Five of the eighteen steps
+failed in it, on the upstream tag bug described [below](#what-was-fixed-because-of-this-report),
+so those fixes have never actually installed on this machine.
 
-### The numbers copied from `M1010`, and why they are inert
+| Fix | What it rests on here |
+|---|---|
+| `acpi-override` | ran; the log shows it recognising the patched table as already active, and the md5 check settles it at run time regardless |
+| `psr-band` | ran; this board's own eDP reports `PSR mode: PSR1 enabled` afterwards |
+| `oled-backlight` | ran; patched this machine's own factory VBT from 6/255 to 12/255 and installed the blob. Nobody has stepped through `measure-floor.sh` on this panel, so 12 is inherited rather than measured, on a panel proven byte-identical |
+| `cdclk-ptl` | opt-in, so it was skipped in the log. The defect it fixes is [issue 9](https://github.com/rs0x29a/Linux-on-HONOR-MagicBook-14-Pro-2026-AI_ZQC-P_M1010/issues/9), which is this owner's |
+| `edp-dsc` | opt-in, skipped. The 6 bpc arithmetic is confirmed from this board's own eDP debugfs |
+| `headset-mic` | **never installed here**: the fetch 404ed. Same ALC256, same `1ee7:209d`, same empty `inputs:` in this machine's own codec autoconfig, and the installer re-checks the subsystem id at run time |
+| `sof-audio` | **never installed here**: the fetch 404ed. It carries nothing measured on any machine; it is a backport against the running kernel |
+| `micmute` | worked here in an earlier release, and its owner is the one who noticed when it regressed. Failed in this log for the same 404 |
+| `touchpad-edge` | **never installed here**: the fetch 404ed. Same Goodix touchpad with all three collections in this machine's own listing |
+| `fan` | ran, and reported OK. Its offsets are read from this board's own DSDT, not copied. The module also refuses to register if the EC does not answer plausibly |
+| `fingerprint` | ran; the log shows the SDCP branch built and the library listing `1c7a:05aa`. Whether enrolment works has not been reported |
+| `battery` | ran, and reported OK. Which pairs this EC arms is decided in EC firmware and is not visible in the ACPI tables, so the pairs are still inherited from `M1010` |
+| `hotkeys` | **never installed here**: the fetch 404ed. `WmiTable` is byte-identical firmware, so the seven codes are very probably the same, but they have not been captured on this machine |
+| `hotkey-actions` | ran; the log shows it reporting both the performance key and the camera key |
+| `auto-rebuild` | ran |
 
-`ec_fan0`, `ec_fan1` and `battery_charge_presets` in this section are the values
-measured on `M1010`. Nobody has read them off an `M1050`.
+Three fixes have therefore never run on this board, and one constant, the
+backlight floor, is inherited rather than measured. `verified` here is a
+maintainer's judgement that the firmware evidence plus a clean run of the rest
+is enough, not a claim that every one of the fifteen was watched working. The
+things that would remove the remaining doubt are small and all belong to
+whoever has the machine:
 
-They are recorded because the two boards are the same product from the same EC
-vendor and the maintainer judges them likely to hold, and they are safe to
-record because **nothing can act on them**: `fan` and `battery` are tier B, this
-section is `reported`, so both refuse before reading a single one. The moment
-`M1050` is marked verified they stop being inert, which is the point at which
-somebody has to have checked them on that machine.
-
-What is still genuinely unknown here: `audio_ssid`, whether the panel is the
-same OLED, `backlight_max`, `camera_usb`, and every `param_`. Those are
-`unknown` rather than copied down. Two read-only commands would fill in most:
-
-```sh
-sudo bash tools/collect-hwinfo.sh
-sudo bash tools/dump-acpi.sh
-```
+* `patch/hotkeys/capture-keys.sh`, to replace "probably the same codes" with the
+  codes.
+* write a pair to `charge_control_thresholds` and read EC `0x85`: nonzero means
+  that EC armed itself, which is the only way to establish the preset list. The
+  hardware dump now records `0x85`, so a dump taken with a limit set shows which
+  preset is active, but not which others would be accepted.
+* `patch/oled-backlight/measure-floor.sh`, to say where the tint actually stops
+  on this panel.
 
 ### What was fixed because of this report
 
-Separate from the profile, and it applies to every board. The boot-time
-re-apply service for `micmute` was pointing at a directory a rename had removed,
-so it failed at every boot and the phantom `KEY_MICMUTE` device came back. The
-symptom was reported returning on `M1050` and then reproduced on `M1010`. The
-installer now starts the unit and fails loudly if it cannot, and
-`tools/selftest.sh` checks that every unit in this repository runs a file its
-own installer puts there.
+All of it applies to every board, not just this one.
+
+**Five fixes failed on one wrong string.** His kernel is `7.2.0-1-cachyos`, and
+five installers each built their own upstream tag as `v${KVER%%-*}`, giving
+`v7.2.0`. Mainline tags the first release of a series without the trailing zero,
+so the tag is `v7.2` and every one of those fetches returned 404. `micmute`,
+`touchpad-edge`, `headset-mic`, `sof-audio` and `hotkeys` all failed in the same
+run, each reporting its own unrelated-looking error, which is why the
+self-toggling microphone came back. This is what took the fix off a machine it
+had been working on. The tag is now resolved once, in
+[`lib/ksrc.sh`](../../lib/ksrc.sh), and it is confirmed rather than guessed: the
+candidate is accepted only if the `Makefile` at that tag names the release being
+run. Two of the five use the tree to decide whether to skip themselves, and a
+tag silently pointing at a newer tree would make them skip a fix the kernel
+still needs.
+
+**The EDID section was empty in every dump ever collected.** The collector
+tested `[[ -s $edid ]]` before reading, and a sysfs binary attribute reports a
+size of zero whether or not it has anything to give. Every connector was skipped
+on every machine, this one included. It reads the file now, which is the only
+way to know, and the panel's identity arrives with each report: re-run here, it
+produced a hundred lines that had never been collected before, down to the
+`Display Product Name`.
+
+**The fingerprint reader was not recognised on a machine that has one.** The
+collector matched vendor names against `goodix|elan|synaptics|fingerprint|
+validity`, and his reader announces itself as `LighTuning Technology Inc.
+Egistec-ETU906Axx`, so the summary said "no obvious reader in lsusb". It now
+matches ids from the recipes under `patch/fingerprint/`, so a reader
+this repository already supports is named by the file that supports it, and
+falls back to the vendor ids that make these sensors rather than to how a
+marketing department spelled itself in a descriptor.
+
+**The EC page is now collected.** See above.
+
+**A Bluetooth mouse was offered as a touchpad.** The HID candidate list printed
+bare ids and told the reader to go and cross-reference the input section by
+hand. His `339b:4702` is a HONOR mouse paired over Bluetooth and sat in that
+list looking exactly like a built-in device. Each candidate now carries its bus
+and the kernel's own names for it.
+
+**`Battery charge limit (EC preset)` reported `OK` and then nothing.** The line
+that was meant to print the pair carried a single-quote escape that is correct
+inside a `sed` expression and is not correct inside a double-quoted `echo`.
+There it fell apart into a pattern made of its own quote characters plus a
+second file argument that does not exist, so `grep` matched nothing and its
+error went to `/dev/null`. It had never worked. `tools/selftest.sh` now refuses
+that escape inside double quotes anywhere in the tree.
+
+Earlier, and separately: the boot-time re-apply service for `micmute` was
+pointing at a directory a rename had removed, so it failed at every boot and the
+phantom `KEY_MICMUTE` device came back. The symptom was reported returning on
+`M1050` and then reproduced on `M1010`. The installer now starts the unit and
+fails loudly if it cannot, and `tools/selftest.sh` checks that every unit in
+this repository runs a file its own installer puts there.

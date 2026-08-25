@@ -64,12 +64,16 @@ honor_gate fan
 #
 # The driver keeps a built-in default for the one board it was measured on, so
 # a bare modprobe still works there, but this installer never relies on it.
-EC_FAN0="$(gate_param ec_fan0)" || die \
-    "$(profile_get model) board ${PROFILE_BOARD:-?} does not record ec_fan0.
+variant_find "$SRC_DIR" || die \
+    "this fix has nothing for $(profile_get model) board ${PROFILE_BOARD:-?}.
+    Covered: $(variant_known "$SRC_DIR")"
+log "machine  = $(variant_note)"
+EC_FAN0="$(recipe_param ec_fan0)" || die \
+    "patch/fan/${VARIANT_FOR}/recipe.conf does not record ec_fan0.
     The tachometer offsets have to be read out of that machine's DSDT before
     this can run: see patch/fan/README.md."
-EC_FAN1="$(gate_param ec_fan1)" || die \
-    "$(profile_get model) board ${PROFILE_BOARD:-?} records ec_fan0 but not ec_fan1."
+EC_FAN1="$(recipe_param ec_fan1)" || die \
+    "patch/fan/${VARIANT_FOR}/recipe.conf records ec_fan0 but not ec_fan1."
 for _o in "$EC_FAN0" "$EC_FAN1"; do
     [[ "$_o" =~ ^0[xX][0-9a-fA-F]{1,2}$ ]] || die \
         "ec_fan0/ec_fan1 must look like 0x2c; got '$_o'."

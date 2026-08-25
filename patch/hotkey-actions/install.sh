@@ -32,6 +32,14 @@ die()  { printf '\033[1;31m==>\033[0m %s\n' "$*" >&2; exit 1; }
 source "${SCRIPT_DIR}/../../lib/gate.sh"
 honor_gate hotkey-actions
 
+# Every fix is looked up the same way, including the ones that carry no
+# numbers of their own: patch/hotkey-actions/<model>/<board>/ records that this
+# machine was considered and on what evidence. See lib/variant.sh.
+variant_find "$SCRIPT_DIR" || die \
+    "this fix has nothing for $(profile_get model) board ${PROFILE_BOARD:-?}.
+    Covered: $(variant_known "$SCRIPT_DIR")"
+log "machine: $(variant_note)"
+
 command -v python3 >/dev/null || die "python3 is required"
 
 # --- 2. what it should act on -------------------------------------------------

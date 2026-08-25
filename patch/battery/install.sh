@@ -34,10 +34,14 @@ die()  { printf '\033[1;31m==>\033[0m %s\n' "$*" >&2; exit 1; }
 source "${SCRIPT_DIR}/../../lib/gate.sh"
 honor_gate battery
 
-PRESETS="$(gate_param battery_charge_presets)" || die \
-    "$(profile_get model) does not record battery_charge_presets, so there is no
-    way to know which pairs its EC enforces. Find them the way README.md
-    describes and add them to the profile."
+variant_find "$SCRIPT_DIR" || die \
+    "this fix has nothing for $(profile_get model) board ${PROFILE_BOARD:-?}.
+    Covered: $(variant_known "$SCRIPT_DIR")"
+log "machine: $(variant_note)"
+PRESETS="$(recipe_param presets)" || die \
+    "patch/battery/${VARIANT_FOR}/recipe.conf does not record presets, so there
+    is no way to know which pairs this EC enforces. Find them the way README.md
+    describes and write them there."
 
 [[ -e "$NODE" ]] || die "$NODE does not exist.
     The in-tree huawei-wmi driver provides it; check that the module is loaded

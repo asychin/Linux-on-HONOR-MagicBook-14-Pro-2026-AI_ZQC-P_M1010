@@ -79,7 +79,7 @@ Less than the other 2026 machines, but not nothing.
 The profile therefore lists only what follows from the platform:
 `cdclk-ptl` and `sof-audio` because it is Panther Lake, `fingerprint` because
 `1c7a:05aa` has a recipe under
-[`patch/fingerprint/sensors/`](../../patch/fingerprint/sensors/), and
+[`patch/fingerprint/`](../../patch/fingerprint/), and
 `auto-rebuild` because both of those build things a package update would
 revert.
 
@@ -187,5 +187,4 @@ screen is visibly garbled during boot here, but the code path is the same one.
 
 `touchscreen_hid`, `panel` (the EDID carries no `Display Device Technology`
 field and the BOE part number was not cross-checked against a specification),
-`backlight_max`, `ec_fan0`, `ec_fan1`, `battery_charge_presets`, and every
-`param_*`.
+`backlight_max`, and anything the tier B fixes would need.

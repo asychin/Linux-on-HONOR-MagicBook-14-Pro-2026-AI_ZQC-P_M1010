@@ -57,6 +57,5 @@ either way there is nothing for the discrete GPU to change.
 ## Not established
 
 Everything else: `touchscreen_hid`, `fingerprint_usb`, `camera_usb`,
-`backlight_max`, `ec_fan0`, `ec_fan1`, `battery_charge_presets`, and every
-`param_*`. One probe, no owner report, and a 2023 machine that is largely
+`backlight_max`, and anything the tier B fixes would need. One probe, no owner report, and a 2023 machine that is largely
 supported by mainline already.

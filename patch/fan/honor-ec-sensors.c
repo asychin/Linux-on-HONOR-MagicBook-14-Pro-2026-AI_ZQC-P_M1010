@@ -172,10 +172,16 @@ static const struct dmi_system_id honor_ec_dmi_table[] = {
 		/*
 		 * The board version is part of the match on purpose. HONOR
 		 * ships ZQC-P as at least two machines, M1010 with a Core Ultra
-		 * X9 388H and M1050 with a Core Ultra 5 338H, and only the
-		 * first one was measured. DMI_MATCH is a substring test, so
-		 * without this line the driver would bind on both and report
-		 * whatever the untested board keeps at 0x2c.
+		 * X9 388H and M1050 with a Core Ultra 5 338H. DMI_MATCH is a
+		 * substring test, so without this line the driver would bind on
+		 * both and report whatever the other board keeps at 0x2c.
+		 *
+		 * M1050 turns out to declare the same EC fields at the same
+		 * offsets, read from its own DSDT in issue 11, but that is not
+		 * a reason to widen this table. This entry is only the fallback
+		 * for a module loaded by hand; the supported path is the
+		 * installer passing fan0= and fan1= from the board section that
+		 * matched, which works on any board whose section records them.
 		 */
 		.matches = {
 			DMI_MATCH(DMI_SYS_VENDOR, "HONOR"),

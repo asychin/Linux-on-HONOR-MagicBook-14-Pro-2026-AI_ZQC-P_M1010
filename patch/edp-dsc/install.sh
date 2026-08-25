@@ -32,6 +32,14 @@ warn() { printf '\033[1;33m==>\033[0m %s\n' "$*" >&2; }
 source "${SCRIPT_DIR}/../../lib/gate.sh"
 honor_gate edp-dsc
 
+# Every fix is looked up the same way, including the ones that carry no
+# numbers of their own: patch/edp-dsc/<model>/<board>/ records that this
+# machine was considered and on what evidence. See lib/variant.sh.
+variant_find "$SCRIPT_DIR" || die \
+    "this fix has nothing for $(profile_get model) board ${PROFILE_BOARD:-?}.
+    Covered: $(variant_known "$SCRIPT_DIR")"
+log "machine: $(variant_note)"
+
 # --- what is the panel doing right now? ---------------------------------------
 # Informational rather than a gate. The patch is conditional in the driver: on
 # a machine whose link already carries 8 bpc it simply never fires, so there is

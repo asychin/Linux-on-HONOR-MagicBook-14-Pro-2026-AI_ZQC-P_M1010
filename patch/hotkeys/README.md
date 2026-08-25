@@ -119,7 +119,7 @@ A new kernel has no `updates/` entry, so re-run this, or install
 Upstream, in `huawei-wmi`'s keymap. There is nothing model-specific about the
 mechanism, only about which codes a given HONOR laptop emits, and the driver
 already carries a mix of Huawei and HONOR entries.
-[`huawei-wmi-honor-keymap.patch`](huawei-wmi-honor-keymap.patch) is the change
+[`zqc-p/M1010/huawei-wmi-keymap.patch`](zqc-p/M1010/huawei-wmi-keymap.patch) is the change
 in submittable form.
 
 ## Credit

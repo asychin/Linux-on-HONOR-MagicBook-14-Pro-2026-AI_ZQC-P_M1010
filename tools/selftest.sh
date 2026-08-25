@@ -58,6 +58,15 @@ for k in "${PROFILE_KEYS[@]}"; do
     grep -qE "^${k}=" devices/TEMPLATE.conf || missing+=" $k"
 done
 [[ -z "$missing" ]] && pass "documents every key" || fail "does not mention:$missing"
+# And the other direction, which is how a key that moved out of the schema
+# stayed in the template: it kept offering ec_fan0 to anybody filling the file
+# in, and the parser had started rejecting it.
+stale=""
+while read -r k; do
+    case " ${PROFILE_KEYS[*]} " in *" $k "*) ;; *) stale+=" $k" ;; esac
+done < <(grep -oE '^[a-z0-9_]+=' devices/TEMPLATE.conf | tr -d '=' | sort -u)
+[[ -z "$stale" ]] && pass "offers no key the parser would reject" \
+                  || fail "offers keys that are not in the schema:$stale"
 
 # --- 1b. the base block of a profile is identity only ------------------------
 # The whole point of board sections: a reading, a measurement or a status in the
@@ -97,10 +106,10 @@ status=verified
 
 [board M1010]
 status=probed" reject
-_profile_case "a measured parameter in the base block" "model=X
+_profile_case "a measurement in the base block" "model=X
 dmi_vendor=HONOR
 dmi_product=X
-param_backlight_min=12
+backlight_max=704
 
 [board M1010]
 status=probed" reject
@@ -282,12 +291,139 @@ else
     pass "none"
 fi
 
+# '"'"' closes a single-quoted string, inserts a literal quote and opens the
+# next one. Inside double quotes it is none of those things: it resolves to two
+# quote characters and an unquoted space, which splits one argument into two.
+# apply_patch.sh carried one in a `grep -oE` inside an echo, so that grep ran
+# with a pattern of stray quotes and a file name that does not exist, matched
+# nothing, and printed "OK" followed by a dash and empty space on every run
+# since. The error went to /dev/null. Found in a user's log, not here.
+section "the single-quote escape is not used inside double quotes"
+if python3 - <<'PYEOF'
+import glob, sys
+
+ESC = "'" + '"' + "'" + '"' + "'"          # the five characters '"'"'
+DQ  = '"'
+SQ  = "'"
+bad = []
+for path in glob.glob("**/*.sh", recursive=True):
+    if path.startswith(".git"):
+        continue
+    for n, line in enumerate(open(path, encoding="utf-8", errors="replace"), 1):
+        if ESC not in line:
+            continue
+        i, in_s, in_d = 0, False, False
+        while i < len(line):
+            if in_d and line.startswith(ESC, i):
+                bad.append("%s:%d: %s" % (path, n, line.strip()[:90]))
+                break
+            c = line[i]
+            if c == "\\" and in_d:
+                i += 2
+                continue
+            if c == SQ and not in_d:
+                in_s = not in_s
+            elif c == DQ and not in_s:
+                in_d = not in_d
+            i += 1
+for b in bad:
+    print("        " + b)
+sys.exit(1 if bad else 0)
+PYEOF
+then
+    pass "none"
+else
+    fail "a single-quote escape sits inside double quotes; see the lines above"
+fi
+
+# The upstream tag is worked out in one place because when each installer did
+# it itself they were all wrong together: a 7.2.0 kernel is v7.2 upstream, and
+# asking for v7.2.0 returned 404 five times in one run on a user's machine.
+# Nothing may go back to spelling it out, and a fetch before ksrc_resolve would
+# use an empty tag.
+section "the upstream kernel tag is resolved, never spelled out"
+hits="$(grep -rn --include='*.sh' -E 'raw\.githubusercontent\.com/gregkh|api\.github\.com/repos/gregkh|TAG="v\$\{KVER' . 2>/dev/null \
+        | grep -v '^\./\.git' | grep -v '^\./lib/ksrc\.sh:' || true)"
+if [[ -n "$hits" ]]; then
+    while read -r h; do fail "reaches the kernel mirror outside lib/ksrc.sh: $h"; done <<< "$hits"
+else
+    pass "only lib/ksrc.sh names the mirror"
+fi
+for f in $(grep -rl --include='*.sh' -E 'ksrc_(fetch|fetch_opt|list_dir)\b' . | grep -v '^\./lib/'); do
+    grep -qE '^[[:space:]]*ksrc_resolve\b' "$f" \
+        && pass "$(basename "$(dirname "$f")")/$(basename "$f") resolves before it fetches" \
+        || fail "$f fetches kernel source without calling ksrc_resolve first"
+done
+
 section "every knob apply_patch.sh reads is in the README options table"
 for v in $(grep -oE '\$\{(SKIP_[A-Z_]+|WITH_[A-Z_]+|ALLOW_[A-Z_]+|FORCE_[A-Z_]+|CHARGE_PRESET|VBT_MIN)' apply_patch.sh \
            | sed 's/\${//' | sort -u); do
     grep -q "\`${v}=" README.md && pass "$v" \
         || fail "apply_patch.sh reads $v and the README options table never mentions it"
 done
+# And the other way, because a documented option that nothing reads is worse
+# than an undocumented one: the reader sets it, nothing happens, and there is
+# no way to tell that from the fix simply not working.
+while read -r v; do
+    [[ -n "$v" ]] || continue
+    grep -rqF --include='*.sh' "$v" . && pass "$v is read somewhere" \
+        || fail "README offers $v and no script reads it"
+done < <(sed -n 's/^| `\([A-Z_][A-Z_0-9]*\)=.*/\1/p' README.md | sort -u)
+
+# Moving a file is how a link goes stale, and a stale link in a README is found
+# by the next person who follows it rather than by the person who moved the
+# file. Two of them were left behind by one directory rename. The heading half
+# matters as much now: several pages say a thing once and everywhere else links
+# to that heading, so renaming it would quietly break five links at a time.
+section "relative links point at files, and at headings, that exist"
+if python3 - <<'PYEOF'
+import glob, os, re, sys
+
+def slug(h):
+    h = h.strip().lower()
+    h = re.sub(r"[`*_]", "", h)
+    h = re.sub(r"[^a-z0-9 -]", "", h)
+    return h.replace(" ", "-")
+
+anchors = {}
+for f in glob.glob("**/*.md", recursive=True):
+    if f.startswith(".git"):
+        continue
+    anchors[os.path.normpath(f)] = {
+        slug(m.group(1))
+        for m in re.finditer(r"^#{1,6}\s+(.*)$", open(f, encoding="utf-8").read(), re.M)
+    }
+
+bad = []
+for f, _ in anchors.items():
+    base = os.path.dirname(f)
+    for m in re.finditer(r"\]\(([^)\s]+)\)", open(f, encoding="utf-8").read()):
+        target = m.group(1)
+        if target.startswith(("http", "mailto:")):
+            continue
+        path, _, frag = target.partition("#")
+        # ../../../../issues/N is a GitHub blob-relative link to the tracker,
+        # not a path in this tree. The section below checks those instead.
+        if "/issues/" in target or "/pull/" in target:
+            continue
+        if path:
+            p = os.path.normpath(os.path.join(base, path))
+            if not os.path.exists(p):
+                bad.append("%s -> %s (no such file)" % (f, target))
+                continue
+        else:
+            p = f
+        if frag and p in anchors and frag not in anchors[p]:
+            bad.append("%s -> %s (no such heading in %s)" % (f, target, p))
+for b in bad:
+    print("        " + b)
+sys.exit(1 if bad else 0)
+PYEOF
+then
+    pass "none broken"
+else
+    fail "a relative link points at something that is not there; see the lines above"
+fi
 
 # Links to the issue tracker are written relative, ../../../../issues/N, which
 # GitHub resolves from the blob path. That only lands on the repository root
@@ -300,49 +436,100 @@ while IFS=: read -r f _ link; do
         || fail "$f is $depth directories deep but its link goes up $up: $link"
 done < <(grep -rn --include='*.md' -oE '\.\./(\.\./)+issues/[0-9]+' . | grep -v '^\./\.git')
 
+# Marking a board verified unlocks the tier B fixes, which then read the numbers
+# in that board's directory under each of them. If a directory is missing or
+# says `unknown` where the installer looks, the run dies somewhere in the middle
+# instead of at the gate. Whether somebody really did the verifying is a human
+# question and not checkable here; whether the claim is self-consistent is.
 section "a verified board carries what it unlocks"
 declare -A NEEDS=(
-    [headset-mic]="audio_ssid param_audio_fixup"
-    [oled-backlight]="param_backlight_min"
+    [headset-mic]="fixup"
+    [oled-backlight]="backlight_min"
     [fan]="ec_fan0 ec_fan1"
-    [battery]="battery_charge_presets"
+    [battery]="presets"
 )
 for f in devices/*.conf; do
     [[ "$(basename "$f")" == TEMPLATE.conf ]] && continue
     PROFILE_QUIET=1 profile_load "$f" >/dev/null 2>&1 || continue
+    m="${PROFILE_BASE[model],,}"
     while read -r idx boards st; do
         [[ "$st" == verified ]] || continue
         bad=0
-        for fix in $(_profile_effective "$idx" fixes ""); do
-            for key in ${NEEDS[$fix]:-}; do
-                v="$(_profile_effective "$idx" "$key" unknown)"
-                [[ -n "$v" && "$v" != unknown ]] && continue
-                fail "$(basename "$f") [board $boards] is verified and lists '$fix',
-        which reads '$key', and that is '$v'"
-                bad=1
+        for b in $boards; do
+            [[ "$b" == "*" ]] && continue
+            for fix in $(_profile_effective "$idx" fixes ""); do
+                [[ -n "${NEEDS[$fix]:-}" ]] || continue
+                d="patch/${fix}/${m}/${b}"
+                [[ -f "${d}/recipe.conf" ]] || d="patch/${fix}/${m}/any"
+                if [[ ! -f "${d}/recipe.conf" ]]; then
+                    fail "$(basename "$f") [board $b] is verified and lists '$fix',
+        and patch/${fix}/${m}/${b}/ does not exist"
+                    bad=1
+                    continue
+                fi
+                # Follow one same_as, the way lib/variant.sh does, so a board
+                # that borrows its numbers is judged on the numbers it gets.
+                t="$(sed -n 's/^same_as=//p' "${d}/recipe.conf" | head -1)"
+                [[ -n "$t" && -f "patch/${fix}/${t}/recipe.conf" ]] && d="patch/${fix}/${t}"
+                for key in ${NEEDS[$fix]}; do
+                    v="$(sed -n "s/^${key}=//p" "${d}/recipe.conf" | head -1)"
+                    [[ -n "$v" && "$v" != unknown ]] && continue
+                    fail "$(basename "$f") [board $b] is verified and lists '$fix',
+        which reads '$key' from ${d}/recipe.conf, and that is '${v:-absent}'"
+                    bad=1
+                done
             done
         done
         (( bad )) || pass "$(basename "$f") [board $boards]"
     done < <(profile_sections)
 done
 
-section "the README models table agrees with the profiles"
+# The README says which fixes each board gets, by name, with the ones that
+# actually run in bold. A count can be checked by eye; a list of fifteen names
+# with a bold subset cannot, so it is generated from the profile here and
+# compared. Without this it would be a description of what used to be true.
+section "the README fix list matches the profiles"
+# One check, not two. This used to be split between a count in a column and a
+# "none yet" in the same row, both of which said less than a list of names does
+# and both of which had to be kept in step with the profile by hand.
 for f in devices/*.conf; do
     [[ "$(basename "$f")" == TEMPLATE.conf ]] && continue
     PROFILE_QUIET=1 profile_load "$f" >/dev/null 2>&1 || continue
-    model="${PROFILE_BASE[model]}"
+    m="${PROFILE_BASE[model]}"
     while read -r idx boards _; do
+        listed="$(_profile_effective "$idx" fixes "")"
+        [[ -n "$listed" ]] || continue
         for b in $boards; do
             [[ "$b" == "*" ]] && continue
-            fixes="$(_profile_effective "$idx" fixes "")"
-            row="$(grep -E "^\| \`${model}\` \| .*\`${b}\`" README.md | head -1)"
-            [[ -n "$row" ]] || continue     # not every board has to be a row
-            if [[ -n "$fixes" && "$row" == *"none yet"* ]]; then
-                fail "README says '${model} ${b}' has no fixes, but its profile lists: $fixes"
-            elif [[ -z "$fixes" && "$row" != *"none yet"* ]]; then
-                fail "README does not say 'none yet' for ${model} ${b}, whose profile lists none"
+            profile_select_board "$b" >/dev/null 2>&1
+            want=""
+            for fx in $listed; do
+                if fix_allowed "$fx"; then want+=" · **${fx}**"; else want+=" · ${fx}"; fi
+            done
+            want="| \`${m}\` \`${b}\` | ${want# · } |"
+            if grep -qF "$want" README.md; then
+                pass "${m} ${b}"
             else
-                pass "${model} ${b}"
+                fail "the README fix list for ${m} ${b} is not what the profile says. Write:
+        ${want}"
+            fi
+        done
+    done < <(profile_sections)
+done
+# A board whose profile lists nothing must not be in that table at all, or it
+# stops meaning "these are the boards that have any".
+for f in devices/*.conf; do
+    [[ "$(basename "$f")" == TEMPLATE.conf ]] && continue
+    PROFILE_QUIET=1 profile_load "$f" >/dev/null 2>&1 || continue
+    m="${PROFILE_BASE[model]}"
+    while read -r idx boards _; do
+        [[ -n "$(_profile_effective "$idx" fixes "")" ]] && continue
+        for b in $boards; do
+            [[ "$b" == "*" ]] && continue
+            if grep -qF "| \`${m}\` \`${b}\` |" README.md; then
+                fail "${m} ${b} lists no fixes and the README fix table has a row for it"
+            else
+                pass "${m} ${b} is absent, as it should be"
             fi
         done
     done < <(profile_sections)
@@ -618,7 +805,7 @@ check_board() {
 check_board "ZQC-P M1010, the measured board" \
     HONOR ZQC-P C233 ZQC-P-PCB M1010 1 "zqc-p.conf exact verified"
 check_board "ZQC-P M1050, reported on issue 1" \
-    HONOR ZQC-P ""   ZQC-P-PCB M1050 1 "zqc-p.conf exact reported"
+    HONOR ZQC-P ""   ZQC-P-PCB M1050 1 "zqc-p.conf exact verified"
 check_board "ZQC-P on a revision nobody has seen" \
     HONOR ZQC-P C233 ZQC-P-PCB M9999 1 "zqc-p.conf none probed"
 check_board "ZQC-P whose firmware reports no board" \
@@ -672,12 +859,14 @@ rm -f devices/__broken.conf
 #
 # All three have happened here. They are checked rather than remembered.
 section "no device id is baked into anything installed"
-# Recipe directories are exempt by construction: they exist to be per-device,
-# and their name is the id. Everything else has to get the id at run time.
+# The per-machine directories are exempt by construction: patch/<fix>/<model>/
+# <board>/ exists to describe one machine, and its recipe says which part that
+# machine has. Everything else has to get the id at run time.
 _id_re='[0-9a-fA-F]{4}:[0-9a-fA-F]{4}'
+_variant_re='^patch/[a-z0-9-]+/[a-z0-9._-]+/[A-Za-z0-9]+/'
 while IFS= read -r f; do
+    [[ "$f" =~ $_variant_re ]] && continue
     case "$f" in
-        */sensors/*|*/touchscreens/*|*/touchpads/*) continue ;;
         tools/selftest.sh) continue ;;   # this file's own fixtures are ids on purpose
     esac
     # Comments may name the machine a thing was measured on; code may not.
@@ -839,6 +1028,90 @@ for d in patch/*/; do
     (( bad )) || pass "patch/$n"
 done
 
+# The other direction, which nothing checked and which cost the Fn keys: an
+# uninstaller must not remove a file a *different* fix's installer put there.
+# patch/micmute/uninstall.sh deleted the huawei-wmi overlay, left over from an
+# early wrong theory about what was muting the microphone. Once patch/hotkeys/
+# started installing a huawei-wmi overlay of its own, removing micmute silently
+# removed the Fn key mapping with it, and the run said nothing.
+section "an uninstaller removes only its own fix's files"
+# Read each script on its own, without the libraries it sources. A path that
+# comes out of lib/ is shared by construction: the xe.ko stamp really does
+# belong to both patches that build xe.ko, and /usr/local/lib/honor is a
+# directory several fixes put something in. Only what a fix names itself is its
+# own property.
+_own_paths_of() {
+    local body; body="$(sed 's/#.*//' "$1")"
+    { grep -oE '/(etc|usr|var|lib|opt)/[A-Za-z0-9._*/${}-]*honor[A-Za-z0-9._*/${}-]*' <<< "$body"
+      # Module overlays are the interesting case and carry no "honor" in the name.
+      grep -oE '/usr/lib/modules/[A-Za-z0-9._*/${}-]+/(updates|dkms)/[A-Za-z0-9._-]+\.ko(\.zst)?' <<< "$body"
+    } | sed 's#[/"'"'"']*$##' | sort -u
+}
+declare -A OWNER=()
+for d in patch/*/; do
+    [[ -f "$d/install.sh" ]] || continue
+    while read -r path; do
+        [[ -n "$path" ]] && OWNER["$path"]="$(basename "$d")"
+    done < <(_own_paths_of "$d/install.sh")
+done
+# A directory that holds another fix's file is not that fix's file. Uninstallers
+# only ever rmdir these, and rmdir on a non-empty directory does nothing.
+for path in "${!OWNER[@]}"; do
+    for other in "${!OWNER[@]}"; do
+        [[ "$other" == "${path}/"* ]] && { unset "OWNER[$path]"; break; }
+    done
+done
+for d in patch/*/; do
+    n="$(basename "$d")"
+    [[ -f "$d/uninstall.sh" ]] || continue
+    bad=0
+    while read -r path; do
+        [[ -n "$path" ]] || continue
+        # Work directories a trap removes, not installed files.
+        [[ "$path" == /var/tmp/* || "$path" == *XXXXXX* ]] && continue
+        owner="${OWNER[$path]:-}"
+        # Unowned paths are legacy names and shared state, which the coverage
+        # check above deals with. Only a path another fix demonstrably installs
+        # is a problem here.
+        [[ -z "$owner" || "$owner" == "$n" ]] && continue
+        fail "patch/$n/uninstall.sh removes $path, which patch/$owner/install.sh installs"
+        bad=1
+    done < <(_own_paths_of "$d/uninstall.sh")
+    (( bad )) || pass "$n"
+done
+
+# The same rule for kernel modules, checked by module name rather than by path.
+# By path it does not work: patch/hotkeys/install.sh never writes
+# /usr/lib/modules/.../updates/huawei-wmi.ko.zst, it calls distro_module_install
+# and lib/distro.sh builds the path. The name is what both sides do spell out.
+section "a fix removes only the kernel modules it installs"
+_modules_of() {  # <file> -> the module names it names, without .ko/.ko.zst
+    sed 's/#.*//' "$1" \
+        | grep -oE '[A-Za-z0-9_-]+\.ko(\.zst)?|distro_module_install[^|;&]*' \
+        | sed 's/\.ko\.zst$//; s/\.ko$//; s/.*distro_module_install[[:space:]]*[^[:space:]]*[[:space:]]*//; s/[[:space:]].*//' \
+        | grep -vE '^\$|^$|^"' | sort -u
+}
+declare -A MODOWNER=()
+for d in patch/*/; do
+    [[ -f "$d/install.sh" ]] || continue
+    while read -r m; do
+        [[ -n "$m" ]] && MODOWNER["$m"]="$(basename "$d")"
+    done < <(_modules_of "$d/install.sh")
+done
+for d in patch/*/; do
+    n="$(basename "$d")"
+    [[ -f "$d/uninstall.sh" ]] || continue
+    bad=0
+    while read -r m; do
+        [[ -n "$m" ]] || continue
+        owner="${MODOWNER[$m]:-}"
+        [[ -z "$owner" || "$owner" == "$n" ]] && continue
+        fail "patch/$n/uninstall.sh removes the module '$m', which patch/$owner/install.sh installs"
+        bad=1
+    done < <(_modules_of "$d/uninstall.sh")
+    (( bad )) || pass "$n"
+done
+
 section "the full uninstall delegates to the per-fix ones"
 missing=""
 for d in patch/*/; do
@@ -852,52 +1125,146 @@ done
 [[ -z "$missing" ]] && pass "every fix is in the removal order" \
                     || fail "uninstall_patch.sh never mentions:$missing"
 
-section "per-device fixes have somewhere to put a second device"
-for family in patch/fingerprint/sensors patch/micmute/touchscreens patch/touchpad-edge/touchpads; do
-    if [[ ! -d "$family" ]]; then
-        fail "$family is missing; that fix has no per-device split"
-        continue
-    fi
-    n=0
-    for d in "$family"/*/; do
-        [[ -f "${d}recipe.conf" ]] || { fail "${d} has no recipe.conf"; continue; }
-        n=$((n + 1))
-        # The directory name has to start with the id, because that is what the
-        # installer matches on after probing the bus.
-        [[ "$(basename "$d")" =~ ^[0-9a-f]{4}-[0-9a-f]{4}- ]] \
-            || fail "${d} is not named <vid>-<pid>-<something>"
-        # A recipe that names a file it does not carry fails at install time, on
-        # the user's machine, after the gate has already said yes.
-        # 'program' is one file, 'patches' a list of them. Not 'source': in the
-        # fingerprint recipes that key says where the libfprint tree comes from,
-        # which is why the HID recipes do not reuse the name.
-        for key in program patches patches_old patches_full; do
-            v="$(sed -n "s/^${key}=//p" "${d}recipe.conf")"
-            for one in $v; do
-                [[ -f "${d}${one}" ]] || fail "${d}recipe.conf names ${one}, which is not there"
+# A fix that carries anything belonging to one machine keeps it under
+# patch/<fix>/<model>/<board>/, the same two words the profile uses. That only
+# helps if the two agree, so this checks that they do: every directory names a
+# board some profile declares, every board that lists such a fix has a
+# directory, and nothing is a second copy of a file that is already here.
+section "per-machine parts are laid out like the profiles"
+
+# What the profiles declare, as "model/board" and lowercase, so a directory can
+# be looked up in it.
+declare -A PROFILE_BOARDS=()
+declare -A PROFILE_LISTS=()      # "model/board/fix" -> 1
+for f in devices/*.conf; do
+    [[ "$(basename "$f")" == TEMPLATE.conf ]] && continue
+    PROFILE_QUIET=1 profile_load "$f" >/dev/null 2>&1 || continue
+    m="${PROFILE_BASE[model],,}"
+    while read -r idx boards _; do
+        for b in $boards; do
+            [[ "$b" == "*" ]] && continue
+            PROFILE_BOARDS["${m}/${b}"]=1
+            for fx in $(_profile_effective "$idx" fixes ""); do
+                PROFILE_LISTS["${m}/${b}/${fx}"]=1
             done
         done
-        for key in name status origin; do
-            grep -q "^${key}=" "${d}recipe.conf" \
-                || fail "${d}recipe.conf has no '${key}'"
-        done
-        # The HID families build one object per device and the uninstaller finds
-        # them by a family glob, so the file name has to carry the family.
-        case "$family" in
-            *touchscreens) family_suffix=micmute ;;
-            *touchpads)    family_suffix=edge ;;
-            *)             family_suffix="" ;;
-        esac
-        if [[ -n "$family_suffix" ]]; then
-            prog="$(sed -n 's/^program=//p' "${d}recipe.conf")"
-            [[ "$prog" == honor-*-${family_suffix}.bpf.c ]] \
-                || fail "${d}recipe.conf: program '$prog' has to be named
-        honor-<chip>-${family_suffix}.bpf.c, which is how uninstall_patch.sh finds it"
-        fi
-        pass "$(basename "$family")/$(basename "$d")"
-    done
-    (( n )) || fail "$family has no recipes at all"
+    done < <(profile_sections)
 done
+
+# Which fixes keep per-machine parts. Derived from the tree rather than listed
+# here: a fix that grows a directory joins the check by growing it.
+mapfile -t VARIANT_FIXES < <(
+    find patch -mindepth 4 -maxdepth 4 -name recipe.conf 2>/dev/null \
+    | sed 's#^patch/##; s#/.*##' | sort -u)
+(( ${#VARIANT_FIXES[@]} )) || fail "no fix has a <model>/<board> directory at all"
+
+declare -A VARIANT_SEEN=()
+for fx in "${VARIANT_FIXES[@]}"; do
+    n=0
+    for d in patch/"$fx"/*/*/; do
+        [[ -f "${d}recipe.conf" ]] || continue
+        n=$((n + 1))
+        rel="${d#patch/${fx}/}"; rel="${rel%/}"          # model/board
+        model="${rel%%/*}"; board="${rel##*/}"
+        VARIANT_SEEN["${rel}/${fx}"]=1
+
+        # The directory has to name a machine that exists. `any` is the
+        # directory form of the profile's [board *].
+        if [[ "$board" == any ]]; then
+            [[ -f "devices/${model}.conf" ]] \
+                || fail "${d} is for model '${model}', and devices/${model}.conf does not exist"
+        elif [[ -z "${PROFILE_BOARDS[${model}/${board}]:-}" ]]; then
+            fail "${d} names ${model} board ${board}, which no profile declares"
+        fi
+
+        # Lowercase model, so the lookup from a profile is one transformation
+        # and not a search.
+        [[ "$model" == "${model,,}" ]] || fail "${d}: the model directory has to be lowercase"
+
+        for key in name status origin; do
+            grep -q "^${key}=" "${d}recipe.conf" || fail "${d}recipe.conf has no '${key}'"
+        done
+
+        target="$(sed -n 's/^same_as=//p' "${d}recipe.conf" | head -1)"
+        if [[ -n "$target" ]]; then
+            # One hop only, and it has to land somewhere real. A chain is how
+            # two boards end up pointing at each other.
+            if [[ ! -f "patch/${fx}/${target}/recipe.conf" ]]; then
+                fail "${d}recipe.conf: same_as=${target} does not exist under patch/${fx}/"
+            elif grep -q '^same_as=' "patch/${fx}/${target}/recipe.conf"; then
+                fail "${d}recipe.conf: same_as=${target} is itself a same_as; one hop only"
+            fi
+            # Nothing else belongs in a directory that borrows its files.
+            extra="$(find "$d" -maxdepth 1 -type f ! -name recipe.conf -printf '%f ' 2>/dev/null)"
+            [[ -z "$extra" ]] \
+                || fail "${d} points at ${target} and also carries files of its own: ${extra}"
+            # A same_as recipe's own device= never reaches an installer, because
+            # following the hop reloads the target's recipe over it. Left free
+            # it would be documentation that quietly contradicts what runs, so
+            # where it is written down it has to agree.
+            mine="$(sed -n 's/^device=//p' "${d}recipe.conf" | head -1)"
+            theirs="$(sed -n 's/^device=//p' "patch/${fx}/${target}/recipe.conf" | head -1)"
+            if [[ -n "$mine" && "$mine" != "$theirs" ]]; then
+                fail "${d}recipe.conf says device=${mine} while ${target} says
+        device=${theirs:-none}. The hop uses the target one, so this board would
+        be checked against the wrong part."
+            fi
+        else
+            # A recipe that names a file it does not carry fails at install
+            # time, on the user's machine, after the gate has already said yes.
+            for key in program patches patches_old patches_full table hwdb patch; do
+                v="$(sed -n "s/^${key}=//p" "${d}recipe.conf")"
+                for one in $v; do
+                    [[ -f "${d}${one}" ]] || fail "${d}recipe.conf names ${one}, which is not there"
+                done
+            done
+        fi
+
+        # The HID fixes build one object per machine and the uninstaller finds
+        # them by a family glob, so the file name has to carry the family.
+        case "$fx" in
+            micmute)       suffix=micmute ;;
+            touchpad-edge) suffix=edge ;;
+            *)             suffix="" ;;
+        esac
+        if [[ -n "$suffix" && -z "$target" ]]; then
+            prog="$(sed -n 's/^program=//p' "${d}recipe.conf")"
+            [[ "$prog" == honor-*-${suffix}.bpf.c ]] \
+                || fail "${d}recipe.conf: program '$prog' has to be named
+        honor-<chip>-${suffix}.bpf.c, which is how uninstall_patch.sh finds it"
+        fi
+        pass "${fx}: ${rel}"
+    done
+    (( n )) || fail "patch/${fx} has no <model>/<board> directory at all"
+done
+
+# A board that lists one of these fixes and has no directory for it will get as
+# far as the gate saying yes and then fail on the machine.
+for key in "${!PROFILE_LISTS[@]}"; do
+    fx="${key##*/}"; rel="${key%/*}"; model="${rel%%/*}"
+    case " ${VARIANT_FIXES[*]} " in *" $fx "*) ;; *) continue ;; esac
+    [[ -n "${VARIANT_SEEN[${rel}/${fx}]:-}" ]] && { pass "${fx}: ${rel} is listed and present"; continue; }
+    [[ -f "patch/${fx}/${model}/any/recipe.conf" ]] && { pass "${fx}: ${rel} via ${model}/any"; continue; }
+    fail "${rel} lists '${fx}' and patch/${fx}/${rel}/ does not exist"
+done
+
+# Two identical files under one fix mean somebody copied where they should have
+# written same_as, and a copy is free to drift out of step with its original.
+# This is the check that lets the layout have one directory per machine without
+# turning into seventeen copies of one file.
+dupes="$(find patch -mindepth 4 -type f ! -name recipe.conf -exec md5sum {} + 2>/dev/null \
+    | awk '{ fx = $2; sub(/^patch\//, "", fx); sub(/\/.*/, "", fx)
+             k = fx SUBSEP $1
+             seen[k] = (k in seen) ? seen[k] ", " $2 : $2
+             n[k]++ }
+           END { for (k in n) if (n[k] > 1) print seen[k] }')"
+if [[ -n "$dupes" ]]; then
+    while read -r line; do
+        [[ -n "$line" ]] && fail "the same file twice under one fix; use same_as: ${line}"
+    done <<< "$dupes"
+else
+    pass "no file is carried twice"
+fi
 
 # --- 5. nothing in the tree that should not be published ---------------------
 # This exists because it happened: the first commit carried dump/win11/.../MSDM

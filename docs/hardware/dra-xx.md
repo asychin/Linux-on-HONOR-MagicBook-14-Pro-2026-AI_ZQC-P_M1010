@@ -80,14 +80,13 @@ so that patch will not cover it; `10a5:a921` is a different FPC part from the
 driver claims them.
 
 Adding either is the same shape of work as the recipes already under
-[`patch/fingerprint/sensors/`](../../patch/fingerprint/sensors/) — an id-table
+[`patch/fingerprint/`](../../patch/fingerprint/) — an id-table
 entry and an enrolment-stage count — but it needs somebody with the hardware to
 confirm the sensor actually enrols, not just that it opens.
 
 ## Not established
 
-`touchscreen_hid`, `backlight_max`, `ec_fan0`, `ec_fan1`,
-`battery_charge_presets`, every `param_*`, and whether the internal keyboard
+`touchscreen_hid`, `backlight_max`, and anything the tier B fixes would need, and whether the internal keyboard
 needs anything. `DRA-XX` is not in the upstream `atkbd` quirk table and none of
 the four probes shows an `i8042` parameter on the kernel command line.
 

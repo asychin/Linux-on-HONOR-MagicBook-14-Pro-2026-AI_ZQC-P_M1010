@@ -16,7 +16,7 @@ affected.
 | Step | Action |
 |---|---|
 | 1 | Backs up everything about to be touched |
-| 2 | Installs `patch/acpi-override/SSDT27_TPD0.aml` into `/usr/lib/firmware/acpi/` and the `acpi_override` mkinitcpio hook |
+| 2 | Installs `patch/acpi-override/zqc-p/M1010/SSDT27_TPD0.aml` into `/usr/lib/firmware/acpi/` and the `acpi_override` mkinitcpio hook |
 | 3 | Adds `acpi_override` to `HOOKS=` in `/etc/mkinitcpio.conf`, right after `autodetect` |
 | 4 | Appends `i8042.dumbkbd=1` to the kernel command line, wherever this distribution keeps it: `/etc/default/limine`, `/etc/default/grub` or `/etc/kernel/cmdline`. On Linux 7.2 and 7.1.10 the upstream `atkbd` quirk makes it unnecessary, and the step says so |
 | 5 | Runs `patch/psr-band/install.sh` — puts `xe.enable_psr=1` on the cmdline so Panel Self Refresh stops at PSR1, and applies it to the running session too |

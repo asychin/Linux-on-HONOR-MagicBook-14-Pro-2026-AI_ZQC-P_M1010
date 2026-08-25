@@ -52,6 +52,14 @@ die()  { printf '\033[1;31m==>\033[0m %s\n' "$*" >&2; exit 1; }
 source "${SCRIPT_DIR}/../../lib/gate.sh"
 honor_gate psr-band
 
+# Every fix is looked up the same way, including the ones that carry no
+# numbers of their own: patch/psr-band/<model>/<board>/ records that this
+# machine was considered and on what evidence. See lib/variant.sh.
+variant_find "$SCRIPT_DIR" || die \
+    "this fix has nothing for $(profile_get model) board ${PROFILE_BOARD:-?}.
+    Covered: $(variant_known "$SCRIPT_DIR")"
+log "machine: $(variant_note)"
+
 # --- 1. which driver owns the display ----------------------------------------
 DRV=""
 for d in /sys/class/drm/card*/device/driver; do
@@ -117,7 +125,7 @@ if grep -qE '(xe|i915)\.enable_psr=' "$(distro_cmdline_file)" 2>/dev/null \
 fi
 
 if distro_cmdline_add "$PARAM"; then
-    echo "    $(grep -hE 'CMDLINE|^GRUB_CMDLINE' "$(distro_cmdline_file)" | head -1)"
+    distro_cmdline_show | sed 's/^/    /'
 else
     die "could not edit the kernel command line. Add ${PARAM} to it yourself."
 fi

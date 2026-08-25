@@ -133,21 +133,24 @@ is the same and it is reached once.
 ## More than one sensor
 
 HONOR ships different fingerprint readers in different markets under the same
-model name, so `sensors/` holds one directory per reader and the installer uses
-whichever is actually on the USB bus.
+model name. This is the clearest case in the tree for keying a directory on the
+board: global `ZQC-P` `M1010` units ship a Goodix reader and Chinese `M1050`
+ones ship an EgisTec, and the board revision is what tells them apart.
 
 ```
-sensors/
-├── 27c6-6f94-goodixmoc/       Goodix, global ZQC-P — verified here
-├── 10a5-9924-fpcmoc/          FPC, global FMB-P
-└── 1c7a-05aa-egismoc-sdcp/    EgisTec ET171, Chinese units of both
+patch/fingerprint/
+├── zqc-p/
+│   ├── M1010/                 Goodix 27c6:6f94 — verified here
+│   └── M1050/                 EgisTec ET171 1c7a:05aa
+└── fmb-p/
+    └── any/                   FPC 10a5:9924, revision not known
 ```
 
-`recipe_find` and `recipe_load` in [`../../lib/gate.sh`](../../lib/gate.sh) do
-the lookup, and they are shared with the other fixes that are a family rather
-than a single fix: [`../micmute/touchscreens/`](../micmute/) and
-[`../touchpad-edge/touchpads/`](../touchpad-edge/) are laid out and read the same
-way.
+`any` is the directory form of the profile's `[board *]`. The FPC recipe came
+from a report that named the model and not the board, and `FMB-P` has five
+revisions; narrowing that to one is what happens when somebody says which they
+have. The layout is described once, in
+[`../README.md`](../README.md#layout).
 
 Each carries a `recipe.conf` saying which driver, which patches, which
 libfprint versions the patches were checked against, where the work came from,

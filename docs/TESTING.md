@@ -97,8 +97,9 @@ sudo python3 -c "print(hex(open('/sys/kernel/debug/ec/ec0/io','rb').read(0x100)[
 
 A nonzero value from the last command means the EC armed its limiter and the
 pair works. `0x0` means it stored the pair and ignored it. Try `40 70` and
-`95 100` as well, and tell us which of the three your EC accepts — the sets may
-differ between models and right now they are confirmed on two.
+`95 100` as well, and tell us which of the three your EC accepts. Why that
+matters and what is known so far:
+[`patch/battery/README.md`](../patch/battery/README.md).
 
 ### 5. The fans
 

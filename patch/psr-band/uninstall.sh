@@ -30,7 +30,7 @@ log "[1/3] Remove the kernel parameter"
 f="$(distro_cmdline_file 2>/dev/null || true)"
 if [[ -n "$f" ]]; then
     distro_cmdline_remove '(xe|i915)\.enable_psr=[0-9]+'
-    echo "    $(grep -hE 'CMDLINE|^GRUB_CMDLINE' "$f" | head -1)"
+    distro_cmdline_show | sed 's/^/    /'
 else
     echo "    no kernel command line file found; drop (xe|i915).enable_psr="
     echo "    from your bootloader's command line by hand"

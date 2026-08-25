@@ -36,14 +36,18 @@ udevadm control --reload 2>/dev/null || true
 u_log "Removing any pre-HID-BPF module overlay"
 # The first version of this fix shipped a patched hid-multitouch. Anybody who
 # installed that and then updated still has it.
-for pair in \
-    "/usr/lib/modules/${KVER}/updates/hid-multitouch.ko.zst:/root/hid-multitouch.ko.zst.orig" \
-    "/usr/lib/modules/${KVER}/updates/huawei-wmi.ko.zst:/root/huawei-wmi.ko.zst.orig"
-do
-    OVERLAY="${pair%%:*}"; BACKUP="${pair##*:}"
-    u_rm "$OVERLAY"
-    [[ -f "$BACKUP" ]] && echo "    in-tree backup at $BACKUP retained"
-done
+#
+# It used to remove a huawei-wmi overlay here too, left over from the first,
+# wrong theory about what was muting the microphone. That stopped being this
+# fix's rubbish the moment patch/hotkeys/ started installing a huawei-wmi
+# overlay of its own: removing micmute then quietly took the Fn keys with it,
+# and the hotkeys step of the next run had nothing left to remove. An
+# uninstaller only removes what its own installer writes. tools/selftest.sh
+# checks that now.
+OVERLAY="/usr/lib/modules/${KVER}/updates/hid-multitouch.ko.zst"
+BACKUP=/root/hid-multitouch.ko.zst.orig
+u_rm "$OVERLAY"
+[[ -f "$BACKUP" ]] && echo "    in-tree backup at $BACKUP retained"
 u_depmod
 
 echo

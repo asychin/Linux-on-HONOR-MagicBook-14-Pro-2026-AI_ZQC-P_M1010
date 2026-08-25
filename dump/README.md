@@ -26,7 +26,7 @@ back, and every I²C device it declared stops existing. It is the `I2C_DEVT`
 SSDT on `ZQC-P` and `XWC-P`, and the DSDT itself on `FMB-P` and `FMB-PM`. The
 `DRA-XX` (2024) and `DRB-P` (2025) do not have the fault at all. The corrected table in
 [`patch/acpi-override/`](../patch/acpi-override/) is that dump with one line
-moved, and [`ssdt27.patch`](../patch/acpi-override/ssdt27.patch) is the diff
+moved, and [`ssdt27.patch`](../patch/acpi-override/zqc-p/M1010/ssdt27.patch) is the diff
 between them.
 
 The **Windows dump** is what the same firmware tells an interpreter that
@@ -76,7 +76,7 @@ cannot be reconstructed from anywhere but the machine, and it is what an
 override. If one is installed, what you get back is the **patched** table, not
 your firmware's own. On this machine, with the override in place,
 `/sys/firmware/acpi/tables/SSDT27` is byte-identical to
-`patch/acpi-override/SSDT27_TPD0.aml` (`0ed8b48d…`, 22940 bytes, OEM revision
+`patch/acpi-override/zqc-p/M1010/SSDT27_TPD0.aml` (`0ed8b48d…`, 22940 bytes, OEM revision
 `0x2000`) rather than to `acpi/zqc-p/SSDT27_orig.aml` (`27bb4879…`, 23708 bytes,
 OEM revision `0x1000`). This is not a hypothetical. denis-bb issue #8 reports an FMB-P on which both
 published tables fail, attaches "a full acpidump from my unit" as evidence of an

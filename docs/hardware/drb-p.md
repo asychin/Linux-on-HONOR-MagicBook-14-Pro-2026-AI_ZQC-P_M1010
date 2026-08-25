@@ -91,7 +91,7 @@ one owner to say.
 sits at 99.5% with status `Not charging`. `inxi`, run on the same machine in the
 same probe, reports `start: 0% end: 100%`. The straightforward reading is the
 one this repository has already demonstrated on ZQC-P: the EC stored `75 80`
-and did not arm it. `battery_charge_presets` stays `unknown` until somebody runs
+and did not arm it. No board here gets a `presets` line until somebody runs
 the two commands in [TESTING.md](../TESTING.md#4-the-battery-limit).
 
 **A second BIOS line.** `2.07` from the probe, `3.04` from a Windows benchmark
@@ -102,7 +102,7 @@ BIOS 3.04`. HONOR's own download pages render client-side and could not be read.
 
 `1c7a:05aa` is the same EgisTec part as the Chinese-market ZQC-P, and this
 repository already carries a recipe for it at
-[`patch/fingerprint/sensors/1c7a-05aa-egismoc-sdcp/`](../../patch/fingerprint/sensors/1c7a-05aa-egismoc-sdcp/),
+[`patch/fingerprint/zqc-p/M1050/`](../../patch/fingerprint/zqc-p/M1050/),
 which is why `fingerprint` is the one fix listed for the HUNTER profile.
 
 Upstream `libfprint` has two reports of exactly this device on exactly this
@@ -122,8 +122,7 @@ Chinese either. The rule does not hold; the profile lists what was read.
 
 ## Not established, on either profile
 
-`touchscreen_hid`, `backlight_max`, `ec_fan0`, `ec_fan1`,
-`battery_charge_presets`, and every `param_*`.
+`touchscreen_hid`, `backlight_max`, and anything the tier B fixes would need.
 
 A hardware probe cannot fill the last four: `hw-probe` does not collect
 `/sys/class/backlight` at all, and the fan tachometer offsets come from the

@@ -57,7 +57,6 @@ dmi_product=ZQC-P
 status=verified
 platform=pantherlake
 audio_ssid=1ee7:209d
-param_backlight_min=12
 fixes=acpi-override oled-backlight headset-mic fan battery ...
 
 [board M1050]
@@ -107,16 +106,26 @@ refused, and it never inherits somebody else's `verified`.
 | `audio_ssid` | `audio subsystem id` |
 | `fingerprint_usb` | `USB`, the Goodix, EgisTec or Elan reader |
 | `panel`, `backlight_max` | `backlight`, plus whether the panel is OLED |
-| `ec_fan0`, `ec_fan1` | the tachometer fields in that machine's DSDT |
 
 There is deliberately **no `dmi_board_version` key**. The section header is the
 board revision, and a second place to write it down is a second place for it to
 be wrong.
 
-**Fix parameters**, the `param_` ones, are not in the dump and cannot be. They
-are decisions somebody made with the laptop in front of them:
-`param_backlight_min` is measured by eye, `param_audio_fixup` names a piece of
-kernel code written for that board. Leave them `unknown` until they exist.
+**What a fix needs is not in the profile at all.** A backlight floor, the EC
+tachometer offsets, the pairs an EC arms, the `alc269.c` fixup a codec needs:
+none of them describes the machine, they describe what one fix has to do on it,
+and none of them is in a dump. They live with the fix that reads them, in
+`patch/<fix>/<model>/<board>/recipe.conf`:
+
+| Fix | What its directory has to record |
+|---|---|
+| `fan` | `ec_fan0`, `ec_fan1`, the tachometer fields in that machine's DSDT |
+| `battery` | `presets`, found by writing a pair and reading EC `0x85` |
+| `oled-backlight` | `backlight_min`, measured by eye with `measure-floor.sh` |
+| `headset-mic` | `fixup`, naming a piece of kernel code written for that board |
+
+Until one of those exists the fix declines by name and says which value is
+missing, which is more use than being silently absent.
 
 Write `unknown` rather than guessing. A missing value produces a clear refusal;
 a wrong one gets acted upon. Write `none` when you have looked and the part is
@@ -156,12 +165,12 @@ licence to fill the field in from a hardware dump: a probe is somebody else's
 |---|---|
 | `platform=pantherlake` | `cdclk-ptl`, `sof-audio` |
 | `panel=oled` on a link that cannot carry 8 bpc, **measured** | `edp-dsc` |
-| `touchscreen_hid`, **and** a program for that id under `patch/micmute/touchscreens/` | `micmute` |
-| `touchpad_hid`, **and** a program for that id under `patch/touchpad-edge/touchpads/` | `touchpad-edge` |
-| `panel=oled` | `oled-backlight` |
-| `fingerprint_usb`, **and** a recipe for that id under `patch/fingerprint/sensors/` | `fingerprint` |
-| `ec_fan0` / `ec_fan1` | `fan` |
-| `battery_charge_presets` | `battery` |
+| `touchscreen_hid`, **and** `patch/micmute/<model>/<board>/` for this machine | `micmute` |
+| `touchpad_hid`, **and** `patch/touchpad-edge/<model>/<board>/` for this machine | `touchpad-edge` |
+| `panel=oled`, **and** `patch/oled-backlight/<model>/<board>/` records `backlight_min` | `oled-backlight` |
+| `fingerprint_usb`, **and** `patch/fingerprint/<model>/<board>/` for this machine | `fingerprint` |
+| `patch/fan/<model>/<board>/` records `ec_fan0` and `ec_fan1` | `fan` |
+| `patch/battery/<model>/<board>/` records `presets` | `battery` |
 | any of the above builds a module or rebuilds a library | `auto-rebuild` |
 
 `psr-band` is deliberately absent from that table. Nothing in a profile
@@ -206,12 +215,17 @@ Keep the two kinds of identifier straight:
   installer confirms it against the bus rather than trusting the file. Never add
   an inventory key to what detection narrows on.
 
-Where the variants need **different code**, not just a different id, the fix
-keeps one directory per device and the installer picks the one matching what it
-found: `patch/fingerprint/sensors/`, `patch/micmute/touchscreens/`,
-`patch/touchpad-edge/touchpads/`. It refuses cleanly when it has none, which is
-better than applying the wrong one: the EgisTec sensor above needs libfprint's
-SDCP support, so adding its id to the Goodix table would achieve nothing.
+Where a fix needs **different code** per machine, not just a different id, it
+keeps one directory per machine, `patch/<fix>/<model>/<board>/`, named the way
+this file is. `patch/fingerprint/zqc-p/M1010/` carries the Goodix recipe and
+`patch/fingerprint/zqc-p/M1050/` the EgisTec one, which is the whole reason that
+fix is split at all: adding the EgisTec id to the Goodix driver would achieve
+nothing, it needs libfprint's SDCP support.
+
+The layout and the steps are in
+[`patch/README.md`](../patch/README.md#layout). An installer refuses cleanly
+when it has no directory for the machine, and refuses again if the part on the
+bus is not the one that directory was written against.
 
 Check it parses:
 
@@ -268,8 +282,8 @@ or a binary rather than a number:
 | Fix | What a new model needs |
 |---|---|
 | `acpi-override` | the same table, or its own. The installer compares the md5 of your live `I2C_DEVT` against the stock one in `dump/acpi/` and refuses unless they match, so a model that happens to ship the identical table is covered for free — ZQC-P and XWC-P do — and one that does not gets a clean refusal. If yours differs, rebuild it from your own tables with `build/build_patch.sh` and [RESEARCH.md](RESEARCH.md) |
-| `headset-mic` | possibly a new `alc269.c` fixup. The installer refuses if `param_audio_fixup` names one it does not know how to emit |
-| `fan` | `ec_fan0` and `ec_fan1` for that board, read out of its own DSDT. The installer passes them to the module as parameters, so nothing has to be added to the driver; it refuses if the section does not record them |
+| `headset-mic` | possibly a new `alc269.c` fixup. The installer refuses if `fixup` in that board's directory names one it does not know how to emit |
+| `fan` | `ec_fan0` and `ec_fan1` for that board, read out of its own DSDT and written into `patch/fan/<model>/<board>/recipe.conf`. The installer passes them to the module as parameters, so nothing has to be added to the driver; it refuses if that file does not record them |
 
 `fingerprint`, `micmute` and `touchpad-edge` are in between: the id comes from
 the section and is confirmed on the bus, but the code is per device. Each keeps

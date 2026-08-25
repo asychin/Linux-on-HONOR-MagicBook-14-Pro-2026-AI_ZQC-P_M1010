@@ -28,6 +28,14 @@ die()  { printf '\033[1;31m==>\033[0m %s\n' "$*" >&2; exit 1; }
 source "${SCRIPT_DIR}/../../lib/gate.sh"
 honor_gate auto-rebuild
 
+# Every fix is looked up the same way, including the ones that carry no
+# numbers of their own: patch/auto-rebuild/<model>/<board>/ records that this
+# machine was considered and on what evidence. See lib/variant.sh.
+variant_find "$SCRIPT_DIR" || die \
+    "this fix has nothing for $(profile_get model) board ${PROFILE_BOARD:-?}.
+    Covered: $(variant_known "$SCRIPT_DIR")"
+log "machine: $(variant_note)"
+
 legacy_move /usr/local/lib/honor-zqcp /usr/local/lib/honor
 legacy_move /etc/honor-zqcp-autorebuild.conf /etc/honor-autorebuild.conf
 legacy_drop /etc/pacman.d/hooks/95-honor-zqcp-kernel-modules.hook \

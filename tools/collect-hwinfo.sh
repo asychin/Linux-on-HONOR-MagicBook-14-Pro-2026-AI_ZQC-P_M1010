@@ -15,6 +15,7 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 OUT_DIR="${OUT_DIR:-$(pwd)}"
 TS="$(date +%Y%m%d-%H%M%S)"
 MODEL="$(cat /sys/class/dmi/id/product_name 2>/dev/null || echo unknown)"
@@ -94,16 +95,22 @@ ls /sys/class/drm/ 2>/dev/null >> "$REPORT" || true
 # EDID is a couple of hundred bytes and carries no personal data.
 section "EDID"
 for c in /sys/class/drm/*/edid; do
-    [[ -s "$c" ]] || continue
     conn="$(basename "$(dirname "$c")")"
+    # Not `[[ -s "$c" ]]`. A sysfs binary attribute reports st_size 0 whether or
+    # not it has anything to give, so that test skipped every connector on every
+    # machine and this section came back empty in each dump collected so far,
+    # this repository's own included. The only way to know is to read it.
+    cp "$c" "${WORK}/edid-${conn}.bin" 2>/dev/null || true
+    [[ -s "${WORK}/edid-${conn}.bin" ]] || { rm -f "${WORK}/edid-${conn}.bin"; continue; }
     printf -- '--- %s\n' "$conn" >> "$REPORT"
     if have edid-decode; then
-        edid-decode < "$c" 2>/dev/null >> "$REPORT" || true
+        edid-decode < "${WORK}/edid-${conn}.bin" 2>/dev/null >> "$REPORT" || true
     else
         printf 'edid-decode not installed; raw copy attached as edid-%s.bin\n' "$conn" >> "$REPORT"
     fi
-    cp "$c" "${WORK}/edid-${conn}.bin" 2>/dev/null || true
 done
+grep -q -- '--- ' <(sed -n '/===== EDID/,/^$/p' "$REPORT") \
+    || printf 'no connector returned an EDID (nothing connected, or the panel is off)\n' >> "$REPORT"
 
 # --- 3b. display link state ---------------------------------------------------
 # Everything needed to answer "why does this panel look like that" without a
@@ -221,15 +228,37 @@ else
 fi
 
 # The EC page holds the fan tachometers and the charge-mode byte, which are
-# three of the profile fields a hardware probe can never fill. Read only, and
-# only if the debug interface is already there: this script does not load
-# modules. `sudo modprobe ec_sys` makes it appear, read-only by default.
+# three of the profile fields a hardware probe can never fill.
+#
+# It used to print "to include it: sudo modprobe ec_sys && re-run" and stop
+# there, which meant the section arrived empty in the dumps that came back and
+# the most useful thing in it was the thing nobody sent. So load the module
+# here instead of asking. Without write_support=1, which is not passed and is
+# not the default, /sys/kernel/debug/ec/ec0/io is a read-only window: no write
+# path to the controller is opened. If it had to be loaded it is unloaded
+# again, leaving the machine as it was found.
 section "EC RAM page 0"
+EC_SYS_LOADED_HERE=0
+if [[ ! -r /sys/kernel/debug/ec/ec0/io ]] && have modprobe; then
+    # Loading a read-only module and unloading it again is as far as this
+    # goes. If debugfs is not mounted the node stays missing and the report
+    # says so: mounting a filesystem is a change to the machine, and this
+    # script's whole contract is that it does not make any.
+    modprobe ec_sys 2>/dev/null && EC_SYS_LOADED_HERE=1
+fi
 if [[ -r /sys/kernel/debug/ec/ec0/io ]]; then
     od -Ax -tx1 -N 256 /sys/kernel/debug/ec/ec0/io >> "$REPORT" 2>/dev/null || true
+    if (( EC_SYS_LOADED_HERE )); then
+        printf '(ec_sys was loaded read-only to read this, then unloaded)\n' >> "$REPORT"
+    fi
 else
-    printf 'not available. To include it: sudo modprobe ec_sys && re-run.\n' >> "$REPORT"
+    printf 'not available: ec_sys would not load, or debugfs is not mounted.\n' >> "$REPORT"
     printf 'It is read-only unless you pass write_support=1, which nothing here does.\n' >> "$REPORT"
+fi
+# `(( x )) && ...` is not usable here: the compound returns 1 when x is 0, and
+# under `set -e` that ends the collection instead of skipping a line.
+if (( EC_SYS_LOADED_HERE )); then
+    modprobe -r ec_sys 2>/dev/null || true
 fi
 
 section "ACPI tables present"
@@ -346,30 +375,94 @@ printf '  %-18s %s\n' "backlight_max" \
     "$(sed -n '/===== backlight/,/^$/p' "$REPORT" | sed -n 's/.*max_brightness=\([0-9]*\).*/\1/p' | head -1)"
 
 # The HID directory name carries the ids but not which device is which, so
-# these are listed as candidates rather than assigned to a field.
+# these are listed as candidates rather than assigned to a field. The bus and
+# the kernel's own name for the device come along with each one: telling people
+# to go and cross-reference the input section by hand produced reports where a
+# Bluetooth mouse sat in the list looking exactly like a touchpad.
+hid_bus_name() {
+    case "$1" in
+        0003) printf 'USB' ;;
+        0005) printf 'Bluetooth, so external' ;;
+        0018) printf 'I2C' ;;
+        0019) printf 'host' ;;
+        *)    printf 'bus %s' "$1" ;;
+    esac
+}
 hids="$(sed -n '/===== HID devices/,/^$/p' "$REPORT" | grep -E '^[0-9]{4}:' || true)"
 if [[ -n "$hids" ]]; then
     echo "touchpad_hid and touchscreen_hid, one of these each:"
     while read -r h; do
         [[ -n "$h" ]] || continue
         ids="${h#*:}"; ids="${ids%%.*}"
-        printf '  %-18s (%s)\n' "${ids,,}" "$h"
+        # /proc/bus/input/devices spells the path in the sysfs line, which ends
+        # in the HID directory name. The N: line above it is the device name.
+        # `paste -sd', '` would alternate the two delimiter characters between
+        # joins rather than use both, so the separator is spelled out once.
+        names="$(awk -v id="$h" '
+            /^N: Name=/ { n = $0; sub(/^N: Name="/, "", n); sub(/"$/, "", n) }
+            $0 ~ ("/" id "/") && n != "" { print n; n = "" }
+        ' /proc/bus/input/devices 2>/dev/null | sort -u \
+          | awk 'NR>1 { printf ", " } { printf "%s", $0 } END { print "" }' || true)"
+        printf '  %-18s (%s, %s)%s\n' "${ids,,}" "$h" "$(hid_bus_name "${h%%:*}")" \
+            "${names:+  ${names}}"
     done <<< "$hids"
-    echo "  which is which: see the 'input devices' section of report.txt"
 fi
 
-fp="$(sed -n '/===== USB/,/^$/p' "$REPORT" \
-      | grep -iE 'goodix|elan|synaptics|fingerprint|validity' \
-      | grep -oE '[0-9a-f]{4}:[0-9a-f]{4}' | head -1 || true)"
-[[ -n "$fp" ]] && printf '  %-18s %s\n' "fingerprint_usb" "$fp" \
-               || echo "  fingerprint_usb    no obvious reader in lsusb, check by hand"
+# Naming the vendors this repository happened to have met is how a reader that
+# announces itself as "LighTuning Technology Inc. Egistec-ETU906Axx" came back
+# as "no obvious reader in lsusb" on a machine that has one. Match on the ids
+# instead. The first list is not a second copy of anything: it is read out of
+# the recipes under patch/fingerprint/<model>/<board>/, so a reader this
+# repository can already handle is named by the same file that handles it.
+fp=""; fp_note=""
+for r in "${SCRIPT_DIR}"/../patch/fingerprint/*/*/; do
+    [[ -f "${r}recipe.conf" ]] || continue
+    rid="$(sed -n 's/^device=//p' "${r}recipe.conf" | head -1)"
+    [[ -n "$rid" ]] || continue
+    if grep -qiE "(^|[^0-9a-f])${rid}([^0-9a-f]|$)" <(sed -n '/===== USB/,/^$/p' "$REPORT"); then
+        fp="$rid"
+        fp_note="  # supported: $(sed -n 's/^name=//p' "${r}recipe.conf" | head -1)"
+        break
+    fi
+done
+if [[ -z "$fp" ]]; then
+    # Nothing known. Fall back to the USB vendors that make these sensors, which
+    # is still a guess, but a guess about who built the chip rather than about
+    # how the marketing department spelled itself in a descriptor.
+    fp="$(sed -n '/===== USB/,/^$/p' "$REPORT" \
+          | grep -oiE '(27c6|1c7a|06cb|138a|04f3|08ff|147e|10a5|05ba|1491|298d):[0-9a-f]{4}' \
+          | head -1 || true)"
+    # `[[ ... ]] && var=...` would end the script under set -e whenever the
+    # test is false, which is the usual case here.
+    if [[ -n "$fp" ]]; then
+        fp_note="  # unknown to this repository, please say so in the issue"
+    fi
+fi
+if [[ -z "$fp" ]]; then
+    fp="$(sed -n '/===== USB/,/^$/p' "$REPORT" \
+          | grep -iE 'fingerprint|biometric|egis|goodix|elan|synaptics|validity|authentec' \
+          | grep -oE '[0-9a-f]{4}:[0-9a-f]{4}' | head -1 || true)"
+    if [[ -n "$fp" ]]; then
+        fp_note="  # matched on the descriptor text, worth double-checking"
+    fi
+fi
+if [[ -n "$fp" ]]; then
+    printf '  %-18s %s%s\n' "fingerprint_usb" "${fp,,}" "$fp_note"
+else
+    echo "  fingerprint_usb    no reader recognised in lsusb, check by hand"
+fi
 
 cat <<'NOTE'
 
   panel              oled or lcd, you know this by looking at the screen
-  ec_fan0 / ec_fan1  from the tachometer fields in DSDT, inside acpi-tables.tar.gz
-  param_backlight_min  measure it, patch/oled-backlight/measure-floor.sh
-  param_audio_fixup  only exists once somebody writes it for this board
+What a fix needs to run on this board does not go in the profile. It goes in
+that fix's own directory for this machine, patch/<fix>/<model>/<board>/:
+
+  patch/fan/...             ec_fan0, ec_fan1: the tachometer fields in the DSDT,
+                            inside acpi-tables.tar.gz
+  patch/battery/...         presets: write a pair, then read EC 0x85
+  patch/oled-backlight/...  backlight_min: measure-floor.sh, by eye
+  patch/headset-mic/...     fixup: only exists once somebody writes it
 
 Everything under "section" belongs to the [board ...] block above it, not to the
 base block. That is the point: HONOR ships one product code as several machines,

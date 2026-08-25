@@ -10,7 +10,9 @@ prose that a profile deliberately does not carry.
 Almost every profile ships with **no fixes enabled**: the data below describes
 the machine, it is not a report that anything was installed on it. The
 exceptions are `ZQC-P` `M1010`, measured here, and `ZQC-P` `M1050`, whose owner
-reported in detail. See [the note in the README](../../README.md#models).
+sent a hardware dump, a full set of ACPI tables and an install log from that
+machine, and had already been running the whole set. What that second one rests
+on, fix by fix, is on [its page](zqc-p.md#what-the-verified-on-this-section-rests-on).
 
 A status belongs to a **board revision**, not to a model. HONOR ships one
 product code as several machines, so a profile has one `[board ...]` section per
@@ -21,15 +23,24 @@ board's measurements.
 | Status | What somebody actually did | What the installer allows |
 |---|---|---|
 | **verified** | ran these fixes on that board | everything that section lists |
-| **reported** | ran something on that machine and wrote it down, in another project | tier A only, and only with `ALLOW_UNVERIFIED=1` |
+| **reported** | described that machine from it: a dump, a log, a report elsewhere. Not the same as having run these fixes and watched them | tier A only, and only with `ALLOW_UNVERIFIED=1` |
 | **probed** | uploaded a hardware probe. The ids are real, no fix was tried | the same as reported |
 | **draft** | nothing. Model and platform from published specifications | the same |
 
-Only `verified` unlocks the fixes that carry model-specific constants — a
-measured backlight floor, an audio subsystem id, EC register offsets, an ACPI
-table. Everything else is limited to fixes that read their inputs off the
-running machine, or that match on a device id and simply find nothing on
-hardware they were not meant for.
+What a status allows depends on which **tier** a fix is in. The tiers are
+assigned in [`lib/profile.sh`](../../lib/profile.sh):
+
+| Tier | What the fix carries | Where it runs |
+|---|---|---|
+| **A** | nothing measured. It works its inputs out from the running machine, or matches on a device id and finds nothing on hardware it was not meant for | anywhere |
+| **B** | constants measured on one board: a backlight floor, an audio subsystem id, EC register offsets | only on a `verified` section |
+| **C** | a binary taken from one machine's firmware | only on the machine it came from |
+
+So on an unverified board the answer to "why did it skip everything
+interesting" is that nobody has confirmed those constants on that hardware yet,
+and sending a dump is how that changes. This page and
+[`docs/ADDING-A-MODEL.md`](../ADDING-A-MODEL.md) are the only two places that
+explain this; everywhere else links here.
 
 Moving a model up a row takes one person and one afternoon:
 [ADDING-A-MODEL.md](../ADDING-A-MODEL.md).
@@ -41,7 +52,7 @@ Moving a model up a row takes one person and one afternoon:
 | Model | Board | Machine | Platform | Status | Page |
 |---|---|---|---|---|---|
 | `ZQC-P` | `M1010` | MagicBook Pro 14 2026 (AI) | Panther Lake | verified | [zqc-p.md](zqc-p.md) |
-| `ZQC-P` | `M1050` | the same, Core Ultra 5 338H | Panther Lake | reported | [zqc-p.md](zqc-p.md#the-m1050-revision) |
+| `ZQC-P` | `M1050` | the same, Core Ultra 5 338H | Panther Lake | verified | [zqc-p.md](zqc-p.md#the-m1050-revision) |
 | `XWC-P` | `M1110`, `M1120` | MagicBook Pro 16 2026 | Panther Lake | reported, one section each | [xwc-p.md](xwc-p.md) |
 | `FMB-P` | five, one section each | MagicBook Pro 14 2025 | Arrow Lake H | probed | [fmb-p.md](fmb-p.md) |
 | `FMB-PM` | `M1030` | MagicBook Pro 14 2025 Geek Edition | Meteor Lake | reported | [fmb-pm.md](fmb-pm.md) |
@@ -214,7 +225,7 @@ nothing.
 
 **Three fingerprint readers have a recipe here, four do not.** `27c6:6f94`,
 `1c7a:05aa` and `10a5:9924` are covered under
-[`patch/fingerprint/sensors/`](../../patch/fingerprint/sensors/). `27c6:5f10`
+[`patch/fingerprint/`](../../patch/fingerprint/). `27c6:5f10`
 and `10a5:a921` (DRA-XX), `10a5:a900` (MRA-XXX) and `27c6:5f91` (FRB-X) have
 none, and not one of the seven is in upstream `libfprint`.
 
@@ -303,7 +314,7 @@ something from one of them, the model page says so.
 |---|---|
 | [colorcube/Linux-on-Honor-Magicbook-14-Pro](https://github.com/colorcube/Linux-on-Honor-Magicbook-14-Pro) | FMB-P, the most active of these by some way |
 | [drphilth/honor-magicbook-pro-14-ubuntu](https://github.com/drphilth/honor-magicbook-pro-14-ubuntu) | FMB-P as Debian packages, and the clearest write-up of the DSDT root cause |
-| [drphilth/honor-fmbp-libfprint-sdcp](https://github.com/drphilth/honor-fmbp-libfprint-sdcp) | the EgisTec SDCP patches carried in [`patch/fingerprint/sensors/`](../../patch/fingerprint/sensors/) |
+| [drphilth/honor-fmbp-libfprint-sdcp](https://github.com/drphilth/honor-fmbp-libfprint-sdcp) | the EgisTec SDCP patches carried in [`patch/fingerprint/`](../../patch/fingerprint/) |
 | [denis-bb/honor-fmb-p-dsdt](https://github.com/denis-bb/honor-fmb-p-dsdt), [astenir/honor-fmb-p-bios-1.16-dsdt](https://github.com/astenir/honor-fmb-p-bios-1.16-dsdt), [NOREIED/linux-honor-fmb-p-dsdt](https://github.com/NOREIED/linux-honor-fmb-p-dsdt), [EvernightFedora/evernight-honor-acpi](https://github.com/EvernightFedora/evernight-honor-acpi) | patched FMB-P DSDTs. Four projects, three different binaries, see [fmb-p.md](fmb-p.md#three-patched-dsdts-are-in-circulation) |
 | [lcrhf1999](https://github.com/lcrhf1999/HONOR-Magicbook-14-2026-dmidecode) | a full `dmidecode` and `dmesg` for BCC-N, the second source for that model |
 | [sledeil/honor-fmb-pm-linux-touchpad-fix](https://github.com/sledeil/honor-fmb-pm-linux-touchpad-fix) | FMB-PM, the only report of that machine anywhere |

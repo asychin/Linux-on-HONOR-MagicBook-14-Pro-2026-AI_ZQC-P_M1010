@@ -10,7 +10,7 @@ source "${SCRIPT_DIR}/../../lib/uninstall.sh"
 
 u_log "Removing the edge-gesture HID-BPF program"
 # Globbed by family, because the object is named after the touchpad it was
-# built for: patch/touchpad-edge/touchpads/<vid>-<pid>-<chip>/.
+# built for: patch/touchpad-edge/<vid>-<pid>-<chip>/.
 shopt -s nullglob
 u_rm /etc/udev-hid-bpf/honor-*-edge.bpf.o \
      /etc/udev/rules.d/99-hid-bpf-honor-*-edge.rules \

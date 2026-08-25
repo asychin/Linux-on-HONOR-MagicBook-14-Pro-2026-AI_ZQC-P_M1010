@@ -7,7 +7,7 @@
 # original is backed up so uninstall_patch.sh can restore it.
 #
 # This is a workaround for as long as the upstream patch under
-# patch/headset-mic/alc269-honor-zqc-p-m1010.patch has not yet landed in the kernel
+# patch/headset-mic/zqc-p/M1010/alc269-headset-mic.patch has not yet landed in the kernel
 # being used. Once the entry is in
 # the running kernel's alc269.c, this script becomes a no-op (it will
 # detect the existing entry and skip the rebuild).
@@ -47,6 +47,13 @@ honor_gate headset-mic
 
 fatal() { echo "[fatal] $*" >&2; exit 1; }
 
+# patch/headset-mic/<model>/<board>/, the same two words the profile used.
+variant_find "$SCRIPT_DIR" || fatal \
+"this fix has nothing for $(profile_get model) board ${PROFILE_BOARD:-?}.
+        Covered: $(variant_known "$SCRIPT_DIR")
+        The quirk is a pin configuration written for one codec on one board, so
+        a machine has to be added deliberately. See patch/headset-mic/README.md."
+
 AUDIO_SSID="$(gate_param audio_ssid)" || fatal \
 "$(profile_get model) does not record audio_ssid. Read it with:
           for d in /sys/bus/pci/devices/*; do
@@ -55,10 +62,17 @@ AUDIO_SSID="$(gate_param audio_ssid)" || fatal \
               esac
           done"
 
-FIXUP_NAME="$(gate_param param_audio_fixup)" || fatal \
-"$(profile_get model) does not record param_audio_fixup, so there is no way to
-        know which alc269.c fixup this board needs. That has to be worked out on
-        the machine itself."
+FIXUP_NAME="$(recipe_param fixup)" || fatal \
+"patch/headset-mic/${VARIANT_FOR}/recipe.conf does not record fixup, so there is
+        no way to know which alc269.c fixup this board needs. That has to be
+        worked out on the machine itself."
+
+# The board directory says which codec it was written against; the machine says
+# what it has. A pin configuration handed to the wrong codec is not a no-op.
+variant_check_device "$AUDIO_SSID" || fatal \
+"$(profile_get model) board ${PROFILE_BOARD:-?} was written against codec
+        $(recipe_get device), and this machine reports $AUDIO_SSID. Nothing has
+        been built. Please open an issue with both ids."
 
 SSID_VEN="0x${AUDIO_SSID%%:*}"
 SSID_DEV="0x${AUDIO_SSID##*:}"
@@ -73,6 +87,7 @@ if [[ "$FIXUP_NAME" != "ALC256_FIXUP_HONOR_ZQC_P_M1010_MIC" ]]; then
         knows how to emit ALC256_FIXUP_HONOR_ZQC_P_M1010_MIC. Add the body for
         '$FIXUP_NAME' to patch/headset-mic/install.sh before installing."
 fi
+echo "[ok] machine $(variant_note)"
 echo "[ok] codec ${SSID_VEN}:${SSID_DEV}, fixup ${FIXUP_NAME}"
 
 legacy_drop /etc/wireplumber/wireplumber.conf.d/51-honor-zqcp-mic-priority.conf
@@ -85,13 +100,12 @@ req clang
 req depmod
 req modprobe
 req strings
-# alsa-tools (hda-verb) is needed by the jack-sense helper service.
-# Build can proceed without it, but the service won't function — warn.
-if ! command -v hda-verb >/dev/null; then
-    echo "[warn] hda-verb not found (alsa-tools package). The honor-mic-jack-init"
-    echo "       service will be installed but won't be able to fire EXECUTE_PIN_SENSE"
-    echo "       after boot. Install alsa-tools to get full functionality."
-fi
+# This used to warn that hda-verb was missing and that honor-mic-jack-init.service
+# would therefore not work. That service was the previous iteration of this fix
+# and this installer removes it a few steps further down, so the warning sent
+# people to install alsa-tools for something that was about to be deleted. It
+# was still doing that in a user log in issue 11. The quirk needs nothing from
+# userspace: it is a pin configuration in the codec driver.
 
 echo "[*] kernel = ${KVER}"
 echo "[*] target = ${KO_OVERLAY}"
@@ -206,33 +220,23 @@ if [[ ! -d "${BUILD_DIR}/sound/hda/codecs/realtek" ]]; then
     exit 1
 fi
 
-# Fetch upstream sources matching the running kernel's tag. The gregkh
-# stable-tree mirror on GitHub exposes raw files at tag-based paths.
-TAG="v${KVER%%-*}"
-BASE_URL="https://raw.githubusercontent.com/gregkh/linux/${TAG}"
+# Fetch upstream sources matching the running kernel's tag, from the
+# stable-tree mirror. Which tag that is, and the proof that it really is this
+# kernel, are lib/ksrc.sh's problem.
+ksrc_resolve
 
-fetch() {
-    local rel="$1" dest="$2"
-    local code
-    code=$(curl -sSL --max-time 60 -o "$dest" -w '%{http_code}' "${BASE_URL}/${rel}")
-    if [[ "$code" != "200" ]]; then
-        echo "[fatal] fetch failed: ${BASE_URL}/${rel} (HTTP $code)" >&2
-        exit 1
-    fi
-}
-
-echo "[*] fetching sources at tag ${TAG}"
+echo "[*] fetching sources at tag ${KSRC_TAG}"
 mkdir -p "${WORK}/helpers"
-fetch "sound/hda/codecs/realtek/alc269.c"          "${WORK}/alc269.c"
-fetch "sound/hda/codecs/realtek/realtek.h"         "${WORK}/realtek.h"
-fetch "sound/hda/codecs/generic.h"                 "${WORK}/generic.h"
-fetch "sound/hda/codecs/side-codecs/hda_component.h" "${WORK}/hda_component.h"
-fetch "sound/hda/common/hda_local.h"               "${WORK}/hda_local.h"
-fetch "sound/hda/common/hda_auto_parser.h"         "${WORK}/hda_auto_parser.h"
-fetch "sound/hda/common/hda_beep.h"                "${WORK}/hda_beep.h"
-fetch "sound/hda/common/hda_jack.h"                "${WORK}/hda_jack.h"
+ksrc_fetch "sound/hda/codecs/realtek/alc269.c"            "${WORK}/alc269.c"
+ksrc_fetch "sound/hda/codecs/realtek/realtek.h"           "${WORK}/realtek.h"
+ksrc_fetch "sound/hda/codecs/generic.h"                   "${WORK}/generic.h"
+ksrc_fetch "sound/hda/codecs/side-codecs/hda_component.h" "${WORK}/hda_component.h"
+ksrc_fetch "sound/hda/common/hda_local.h"                 "${WORK}/hda_local.h"
+ksrc_fetch "sound/hda/common/hda_auto_parser.h"           "${WORK}/hda_auto_parser.h"
+ksrc_fetch "sound/hda/common/hda_beep.h"                  "${WORK}/hda_beep.h"
+ksrc_fetch "sound/hda/common/hda_jack.h"                  "${WORK}/hda_jack.h"
 for f in thinkpad ideapad_hotkey_led hp_x360 ideapad_s740; do
-    fetch "sound/hda/codecs/helpers/${f}.c"        "${WORK}/helpers/${f}.c"
+    ksrc_fetch "sound/hda/codecs/helpers/${f}.c"          "${WORK}/helpers/${f}.c"
 done
 
 # Flatten the source-tree include paths so we don't need to mirror the
@@ -328,7 +332,7 @@ with open(src_path, "w") as f:
 PYEOF
     if ! grep -q "${SSID_VEN}, ${SSID_DEV}" "${WORK}/alc269.c"; then
         echo "[fatal] could not insert the SND_PCI_QUIRK line — upstream layout changed" >&2
-        echo "        review patch/headset-mic/alc269-honor-zqc-p-m1010.patch and adjust." >&2
+        echo "        review patch/headset-mic/zqc-p/M1010/alc269-headset-mic.patch and adjust." >&2
         exit 1
     fi
     echo "[ok] inserted SND_PCI_QUIRK for ${AUDIO_SSID} ${QUIRK_DESC}"

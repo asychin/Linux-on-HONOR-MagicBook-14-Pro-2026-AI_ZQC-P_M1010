@@ -45,7 +45,8 @@ fi
 # showed the colour cast and the blotches, 3.98% was clean, so the threshold
 # sits between them and this leaves two steps of margin. Panels vary, so run
 # measure-floor.sh and override if yours disagrees.
-# The value itself now lives in the device profile as param_backlight_min; see
+# The value itself lives in this fix's own directory for the machine, as
+# backlight_min in patch/oled-backlight/<model>/<board>/recipe.conf; see
 # the check further down, which also accepts a VBT_MIN override.
 
 SRC_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -91,12 +92,16 @@ if [[ "$(profile_get panel)" == "lcd" ]]; then
     this most likely just costs you the bottom of the range."
 fi
 
-# The floor comes from the profile unless the caller overrides it, which is
-# what somebody measuring their own panel will want to do.
-VBT_MIN="$(gate_param param_backlight_min VBT_MIN)" || die \
-    "$(profile_get model) has no param_backlight_min and none was given.
-    Run measure-floor.sh on this panel, then either pass VBT_MIN=<n> or write
-    it into devices/$(basename "${DETECT_PROFILE:-${HONOR_PROFILE:-?}}")."
+# The floor comes from this board's own directory under the fix, unless the
+# caller overrides it, which is what somebody measuring their own panel wants.
+variant_find "$SRC_DIR" || die \
+    "this fix has nothing for $(profile_get model) board ${PROFILE_BOARD:-?}.
+    Covered: $(variant_known "$SRC_DIR")"
+log "machine: $(variant_note)"
+VBT_MIN="$(recipe_param backlight_min VBT_MIN)" || die \
+    "patch/oled-backlight/${VARIANT_FOR}/recipe.conf has no backlight_min and
+    none was given. Run measure-floor.sh on this panel, then either pass
+    VBT_MIN=<n> or write it there."
 
 [[ "$VBT_MIN" =~ ^[0-9]+$ ]] || die "VBT_MIN must be a number, got '$VBT_MIN'"
 (( VBT_MIN >= 1 && VBT_MIN <= 64 )) || \
@@ -233,7 +238,7 @@ if [[ -n "$CMDFILE" && -f "$CMDFILE" ]]; then
     distro_cmdline_remove '(xe|i915)\.vbt_firmware=[^ "]*' || true
     distro_cmdline_add "$CMDLINE_ARG" \
         || warn "add $CMDLINE_ARG to your kernel command line yourself"
-    echo "    $(grep -hE 'CMDLINE|^[^#]' "$CMDFILE" | head -1)"
+    distro_cmdline_show | sed 's/^/    /'
 else
     warn "no kernel command line file found for $(distro_family)."
     warn "Add this to your bootloader's command line yourself:"

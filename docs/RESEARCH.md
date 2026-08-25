@@ -6,7 +6,7 @@ with a different HONOR laptop needs.
 
 ## How the patch is built
 
-`patch/acpi-override/SSDT27_TPD0.aml` is regenerated from `patch/acpi-override/SSDT27_TPD0.dsl` with:
+`patch/acpi-override/zqc-p/M1010/SSDT27_TPD0.aml` is regenerated from `patch/acpi-override/zqc-p/M1010/SSDT27_TPD0.dsl` with:
 
 ```bash
 build/build_patch.sh

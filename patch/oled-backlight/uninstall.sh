@@ -24,7 +24,7 @@ u_log "Removing the kernel parameter"
 # "drop it by hand" for a case the library already handles.
 if f="$(distro_cmdline_file 2>/dev/null)" && [[ -n "$f" ]]; then
     distro_cmdline_remove '(xe|i915)\.vbt_firmware=[^ "]*'
-    echo "    $(grep -hE 'CMDLINE|^[^#]' "$f" | head -1)"
+    distro_cmdline_show | sed 's/^/    /'
 else
     u_warn "no kernel command line file found; drop (xe|i915).vbt_firmware=
     from your bootloader's command line by hand"

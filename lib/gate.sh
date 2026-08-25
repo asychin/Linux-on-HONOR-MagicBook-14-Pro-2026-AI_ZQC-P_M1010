@@ -31,6 +31,15 @@ source "$HONOR_ROOT/lib/detect.sh"
 # distribution compresses its modules.
 # shellcheck source=/dev/null
 source "$HONOR_ROOT/lib/distro.sh"
+# Finding the upstream tree that matches the running kernel. Sourced here for
+# the same reason: five installers need it, and when each worked it out for
+# itself they were all wrong together.
+# shellcheck source=/dev/null
+source "$HONOR_ROOT/lib/ksrc.sh"
+# Where a fix keeps the parts of itself that belong to one machine, laid out the
+# same way a profile is: patch/<fix>/<model>/<board>/.
+# shellcheck source=/dev/null
+source "$HONOR_ROOT/lib/variant.sh"
 
 # honor_lock <name>
 #
@@ -122,10 +131,30 @@ honor_gate() {
     honor_lock "$fix"
 }
 
+# gate_wait_until <seconds> <command...> -> 0 as soon as the command succeeds
+#
+# `udev-hid-bpf add` returns before the kernel has finished re-probing the
+# device, so checking once after a fixed sleep is a coin toss. It normally
+# settles in about 200 ms, and it was seen losing that toss on a machine where
+# the attach had in fact worked: the installer then died red, saying the program
+# was not attached to a device it was attached to. Waiting for the state instead
+# of for a duration is both faster in the usual case and correct in the unusual
+# one.
+gate_wait_until() {
+    local deadline=$(( SECONDS + $1 ))
+    shift
+    while :; do
+        "$@" && return 0
+        (( SECONDS >= deadline )) && return 1
+        sleep 0.2
+    done
+}
+
 # gate_param <key> <fallback-env-var> -> value
 # Profile value wins; an explicit environment override wins over that, so
-# somebody measuring a new floor can still say VBT_MIN=14 without editing a
-# profile first.
+# somebody can override an inventory value from the environment without editing
+# a profile first. The numbers a fix needs are not here: those come out of that
+# fix's own directory for the machine, through recipe_param in lib/variant.sh.
 gate_param() {
     local key="$1" envvar="${2:-}" v=""
     [[ -n "$envvar" ]] && v="${!envvar:-}"
@@ -260,68 +289,3 @@ gate_hwdb_render() {
     chmod 0644 "$dst"
 }
 
-# --- per-device recipes -------------------------------------------------------
-# Several fixes are not one fix but a family: the work needed differs per part,
-# not per laptop. A fingerprint reader needs its own libfprint driver and its own
-# patches; a touchscreen's phantom-key fixup is written against one vendor's
-# report descriptor and means nothing on another.
-#
-# So those fixes keep one directory per device id, each with a recipe.conf, and
-# the installer picks the directory matching the id it found on the bus. Adding
-# support for a second part is then adding a directory, not editing an installer
-# and hoping the machine it was written on still works.
-#
-# The directory is named <vid>-<pid>-<something-readable>, so the id is visible
-# in a file listing and the match is a prefix test.
-
-RECIPE_DIR=""
-declare -gA RECIPE=()
-
-# recipe_find <family-dir> <vid:pid> -> 0 and sets RECIPE_DIR, 1 if none matches
-recipe_find() {
-    local base="$1" id="$2" d
-    RECIPE_DIR=""
-    [[ -d "$base" ]] || return 1
-    for d in "$base"/*/; do
-        [[ -f "${d}recipe.conf" ]] || continue
-        [[ "$(basename "$d")" == "${id/:/-}"-* ]] && RECIPE_DIR="${d%/}"
-    done
-    [[ -n "$RECIPE_DIR" ]]
-}
-
-# recipe_known <family-dir> -> the ids this family covers, for an error message
-recipe_known() {
-    local base="$1" d out=()
-    [[ -d "$base" ]] || { printf 'none'; return 0; }
-    for d in "$base"/*/; do
-        [[ -f "${d}recipe.conf" ]] && out+=("$(basename "$d")")
-    done
-    (( ${#out[@]} )) && printf '%s' "${out[*]}" || printf 'none'
-}
-
-# recipe_load [<recipe-dir>] -> fills RECIPE from recipe.conf
-# Strict key=value, parsed and never sourced, for the same reason a profile is:
-# these files arrive through pull requests from people we do not know.
-recipe_load() {
-    local dir="${1:-$RECIPE_DIR}" line
-    RECIPE=()
-    [[ -f "${dir}/recipe.conf" ]] || return 1
-    while IFS= read -r line || [[ -n "$line" ]]; do
-        line="${line%%$'\r'}"
-        [[ -z "$line" || "$line" == \#* ]] && continue
-        [[ "$line" == *=* ]] || continue
-        RECIPE["${line%%=*}"]="${line#*=}"
-    done < "${dir}/recipe.conf"
-    return 0
-}
-
-# recipe_get <key> [default]
-recipe_get() { printf '%s' "${RECIPE[$1]:-${2:-}}"; }
-
-# recipe_warn_unverified   say so, once, when a recipe has not been run here
-recipe_warn_unverified() {
-    [[ "${RECIPE[status]:-}" == "verified" ]] && return 0
-    printf '\033[1;33m==>\033[0m %s\n' \
-        "this recipe is '${RECIPE[status]:-unknown}': it comes from ${RECIPE[origin]:-elsewhere}
-    and has not been run on hardware by this repository." >&2
-}

@@ -155,13 +155,11 @@ committing it.
 
 A registry export contains machine-specific and sometimes personal data. This
 section existed before the first commit of this repository and was not applied
-to it: the export committed here carried `BackupProductKeyDefault` with the
-machine's real Windows key, eight `DigitalProductId` blobs and 141 references to
-the machine name. It was removed from the working tree on 2026-08-22, **and it
-is still in git history**, which is a different thing: the blobs remain fetchable
-from every clone and fork until history is rewritten. So: actually run the
-checks, and run `tools/selftest.sh`, which now fails on key-shaped strings and
-on any whole-hive export in the tree — before the first commit, not after.
+to it, with the consequences set out in [SECURITY.md](../SECURITY.md). So:
+actually run the checks below, and run `tools/selftest.sh`, which fails on
+key-shaped strings and on any whole-hive export in the tree, before the first
+commit and not after. Deleting a blob from the tip does not remove it from
+history.
 
 At minimum, check for and remove:
 

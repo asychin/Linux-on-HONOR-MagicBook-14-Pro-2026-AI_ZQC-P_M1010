@@ -78,20 +78,27 @@ fi
 log "Found fingerprint reader $FP_VID_PID"
 
 # Each reader needs its own libfprint driver, its own patches, and sometimes a
-# different source tree entirely. sensors/<vid>-<pid>-<driver>/recipe.conf says
-# which, so nobody has to go and find the work in somebody else's repository.
+# different source tree entirely. patch/fingerprint/<model>/<board>/recipe.conf
+# says which, so nobody has to go and find the work in somebody else's
+# repository. This is also the clearest case in the tree for keying on the
+# board: global ZQC-P M1010 units ship a Goodix reader and Chinese M1050 ones
+# ship an EgisTec, and the board revision is what tells them apart.
 #
-# recipe_find and recipe_load are in lib/gate.sh, shared with the other fixes
-# that are a family rather than a single fix: patch/micmute/touchscreens/ and
-# patch/touchpad-edge/touchpads/ are laid out the same way and read the same way.
-recipe_find "${REPO_DIR}/sensors" "$FP_VID_PID" || die \
-    "the reader here is $FP_VID_PID and this repository has no recipe for it.
-    Covered: $(recipe_known "${REPO_DIR}/sensors")
+# lib/variant.sh does the lookup, and every fix that carries per-machine parts
+# uses the same layout and the same reader.
+variant_find "$REPO_DIR" || die \
+    "this fix has nothing for $(profile_get model) board ${PROFILE_BOARD:-?}.
+    Covered: $(variant_known "$REPO_DIR")
 
-    If you get one working, a recipe here would be very welcome:
+    If you get a reader working, a directory here would be very welcome:
     see patch/fingerprint/README.md for the layout."
-SENSOR_DIR="$RECIPE_DIR"
-recipe_load
+SENSOR_DIR="$VARIANT_DIR"
+
+variant_check_device "$FP_VID_PID" || die \
+    "$(profile_get model) board ${PROFILE_BOARD:-?} is recorded with reader
+    $(recipe_get device), and this unit has $FP_VID_PID on the USB bus.
+    Nothing has been built or installed. Please open an issue with the two ids:
+    either this unit is unusual, or that board section is wrong."
 
 FP_NAME="${RECIPE[name]:-$FP_VID_PID}"
 FP_SOURCE="${RECIPE[source]:-distro}"
@@ -105,6 +112,7 @@ esac
     Available: default$([[ -n "${RECIPE[patches_old]:-}" ]] && echo ", old")$([[ -n "${RECIPE[patches_full]:-}" ]] && echo ", full")"
 [[ -n "$FP_PATCHES" ]] || die "${SENSOR_DIR}/recipe.conf names no patches"
 
+log "machine: $(variant_note)"
 log "sensor: $FP_NAME  (${RECIPE[driver]:-?} driver, source=${FP_SOURCE})"
 recipe_warn_unverified
 

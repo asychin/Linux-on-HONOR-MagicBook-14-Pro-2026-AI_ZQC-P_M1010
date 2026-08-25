@@ -32,6 +32,5 @@ installs is the template to copy if a HONOR machine ever needs more than
 
 ## Not established
 
-`fingerprint_usb`, `camera_usb`, `panel`, `backlight_max`, `ec_fan0`,
-`ec_fan1`, `battery_charge_presets`, every `param_*`, and whether the keyboard
+`fingerprint_usb`, `camera_usb`, `panel`, `backlight_max`, and anything the tier B fixes would need, and whether the keyboard
 needs anything. One probe, no owner report.

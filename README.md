@@ -55,87 +55,36 @@ the codec is on HDA and unaffected. See
 ## Models
 
 Trust is per **board revision**, not per model. HONOR ships one product code as
-several machines: `ZQC-P` is board `M1010` with a Core Ultra X9 388H here and
-board `M1050` with a Core Ultra 5 338H in
-[issue #1](https://github.com/rs0x29a/Linux-on-HONOR-MagicBook-14-Pro-2026-AI_ZQC-P_M1010/issues/1),
-and `FMB-P` is five revisions across three SKUs. So a profile has one section
-per revision, each with its own status, and a revision nobody has measured never
-inherits another one's.
+several machines: `ZQC-P` is board `M1010` here and board `M1050` elsewhere,
+with a different CPU; `FMB-P` is five revisions across three SKUs. So a profile
+has one section per revision, each with its own status, and a revision nobody
+has measured never inherits another one's.
 
-One row per board revision, because that is the unit anybody measured.
+Seventeen board revisions across twelve product codes are recognised. What each
+one is, what is known about it, where every claim came from and what it would
+take to move it up: **[docs/hardware/](docs/hardware/)**. That is the record;
+this page does not repeat it.
 
-| Model | Board | Machine | Platform | Profile | Fixes enabled |
-|---|---|---|---|---|---|
-| `ZQC-P` | `M1010` | MagicBook Pro 14 2026 (AI), Ultra X9 388H | Panther Lake | **verified**, the reference unit | all 15 |
-| `ZQC-P` | `M1050` | the same, Ultra 5 338H, Arc B370 | Panther Lake | **reported** — issues 1, 8, 9 | 9 listed, 6 run |
-| `XWC-P` | `M1110` | MagicBook Pro 16 2026, Ultra 5 338H | Panther Lake | **reported** — Manjaro 187347, phreer | none yet |
-| `XWC-P` | `M1120` | MagicBook Pro 16 2026 | Panther Lake | **reported** — Manjaro 187526 | none yet |
-| `FMB-P` | `M1010` `M1020` `M1030` `M1070` `M1090` | MagicBook Pro 14 2025 | Arrow Lake | **probed**, five separate sections — 10 probes | none yet |
-| `FMB-PM` | `M1030` | MagicBook Pro 14 2025 Geek Edition | **Meteor Lake** | **reported** — [sledeil](https://github.com/sledeil/honor-fmb-pm-linux-touchpad-fix) | none yet |
-| `DRB-P` | unknown | MagicBook Pro 16 2025 | Arrow Lake | draft, no probe exists | none yet |
-| `DRB-P` | `M1020` | MagicBook Pro 16 HUNTER 2025, RTX 5070/5060 | Arrow Lake | **probed**, iGPU side only | none yet |
-| `DRA-XX` | `M1020` | MagicBook Pro 16 2024, Ultra 5 125H | Meteor Lake | **probed** | none yet |
-| `DRA-XX` | `M1030` | MagicBook Pro 16 HUNTER 2024, Ultra 5 125H | Meteor Lake | **probed**, iGPU side only | none yet |
-| `DRA-XX` | `M1040` | MagicBook Pro 16 HUNTER 2024, Ultra 7 155H | Meteor Lake | **probed**, iGPU side only | none yet |
-| `BCC-N` | `M1070` | MagicBook 14 2026 | Panther Lake | **probed** — same platform, same ACPI fault | none yet |
-| `MRA-XXX` | `M1040` | MagicBook Art 14 2024 | Meteor Lake | **probed** | none yet |
-| `MRB-XXX` | `M1090` | MagicBook Art 14 2025 | Arrow Lake | **probed** | none yet |
-| `FRB-X` | `M1050` | MagicBook X14 Plus 2025 | Raptor Lake | **probed** | none yet |
-| `GLO-GXXX` | `M1010` | MagicBook 14 2023 | Raptor Lake | **probed** | none yet |
-| `FMI-XX` | `M1040` | MagicBook X14 Plus 2024 | AMD | **probed** | none yet |
+Two of those seventeen have any fixes enabled. In install order, **bold** where
+the fix runs and plain where it is listed but declines, which it does by name
+and with the value it is missing rather than silently:
 
-**"none yet" is not an oversight.** A profile lists a fix when somebody has run
-it on that board and said what happened, and not before. Most of the data in
-these profiles came from hardware probe databases and other people's
-repositories: it says what is in the machine, not that anything was ever
-installed on it. Until somebody reports back, the profile's job is to recognise
-the machine and decline, which is the useful thing it can honestly do.
+| Board | Fixes |
+|---|---|
+| `ZQC-P` `M1010` | **acpi-override** · **psr-band** · **oled-backlight** · **cdclk-ptl** · **edp-dsc** · **headset-mic** · **sof-audio** · **micmute** · **touchpad-edge** · **fan** · **fingerprint** · **battery** · **hotkeys** · **hotkey-actions** · **auto-rebuild** |
+| `ZQC-P` `M1050` | **acpi-override** · **psr-band** · **oled-backlight** · **cdclk-ptl** · **edp-dsc** · **headset-mic** · **sof-audio** · **micmute** · **touchpad-edge** · **fan** · **fingerprint** · **battery** · **hotkeys** · **hotkey-actions** · **auto-rebuild** |
 
-`ZQC-P` `M1050` is the one exception so far, and shows what a report earns. Its
-owner posted the input-device listing that contains the phantom key this
-repository fixes, opened the issue about the garbled boot screen, and found and
-confirmed the fingerprint solution. Nine fixes are listed on the strength of
-that; the six tier A ones run, and `fan`, `battery` and `hotkeys` refuse by name
-until somebody marks that board verified, because they carry numbers measured on
-`M1010`.
+A board below `verified` gets only the tier A subset, and `apply_patch.sh`
+refuses to start on one without `ALLOW_UNVERIFIED=1`. Every other board revision
+has no fixes at all, which is deliberate and is explained with the status words
+in [docs/hardware/README.md](docs/hardware/README.md#what-the-status-words-mean).
 
-Four words, in decreasing order of how much anybody actually knows:
-**verified** means the fixes were run on that machine here; **reported** means
-somebody ran something on one and wrote it down, in another project;
-**probed** means the device ids are genuine readings from a hardware probe but
-nobody has tried a single fix; **draft** means the model is recognised and its
-platform is known, and nothing else. Nobody working on this repository owns any
-of these machines except the reference unit.
+The two rows above being equal is not the same as the evidence behind them being
+equal. What each rests on, fix by fix, is on
+[the ZQC-P page](docs/hardware/zqc-p.md#what-the-verified-on-this-section-rests-on).
 
-A board revision that appears in none of these rows is not refused either: it
-keeps the product identity, runs as `probed`, and every fix declines by name.
-
-`DRA-XX` and `GLO-GXXX` are the literal strings HONOR's firmware reports,
-whatever the marketing code on the box was: there is no `DRA-54`, `DRA-56` or
-`DRA-72` in DMI, and the 2023 MagicBook 14 sold as `GLO-G561` reports
-`GLO-GXXX`.
-
-The six machines below the Pro line are there because each shares something
-concrete: a platform, a touchscreen, a touchpad quirk, or a firmware method.
-Three of them need nothing from here at all, and the profile exists so that
-detection says "recognised, nothing to install" instead of refusing.
-
-Note the platform column for `FMB-PM`: it is sold alongside the 2025 line but
-the silicon is a Core Ultra 5 125H, which is Meteor Lake. An earlier draft here
-inferred Arrow Lake from the marketing year and was wrong, which is why
-`platform` is a recorded fact rather than something derived from `year`.
-
-On anything but a `verified` profile the installer refuses by default;
-`ALLOW_UNVERIFIED=1` unlocks only the fixes that cannot carry another machine's
-constants.
-
-Two models sell in both a UMA and a HUNTER variant under the same
-`product_name`, so detection also looks for a discrete GPU to tell them apart.
-Those machines are supported on their integrated-GPU side only: the proprietary
-NVIDIA driver, PRIME and graphics switching are out of scope here.
-
-Turning a draft into a verified profile takes one read-only dump and somebody
-willing to run the fixes; see [below](#have-a-model-that-is-not-covered).
+The table is generated from the profiles, and `tools/selftest.sh` fails if it
+drifts from them.
 
 ---
 
@@ -167,23 +116,26 @@ not a fix that fails quietly.
 
 Each fix installer does the same check on its own, so running
 `patch/fan/install.sh` directly is exactly as guarded as going through
-`apply_patch.sh`. The model-specific values they need, device ids, the audio
-subsystem id, the backlight floor, come out of the profile rather than being
-written into the scripts.
+`apply_patch.sh`, and a fix a profile does not list refuses to install either
+way.
 
-Each board section of a profile carries a `status`. Only a `verified` one,
-meaning somebody actually ran these fixes on that board, unlocks everything. On
-a `reported` or `draft` section the run stops as well, and `ALLOW_UNVERIFIED=1`
-opens up just the
-subset that cannot go wrong: fixes that read their inputs off the running
-machine, or match on a device id and find nothing on hardware they were not
-meant for. Anything carrying a measured backlight floor, an audio subsystem id
-or an EC register offset stays disabled. The tiers are defined in
-[`lib/profile.sh`](lib/profile.sh).
+Nothing model-specific is written into the scripts. The ids of the parts fitted
+come out of the profile, and are then confirmed against the bus. What a fix
+needs in order to run on a particular machine, the EC tachometer offsets, the
+backlight floor, the charge pairs the EC arms, lives with that fix, in
+`patch/<fix>/<model>/<board>/recipe.conf`, named after the same machine the
+profile names. Adding a machine to a fix is writing one file there.
 
-Right now exactly one board section is `verified`, `ZQC-P` board `M1010`, the
-machine this was built on. Detection reports which board it decided on, and says
-so plainly when that is not one the profile describes.
+Each board section of a profile carries a `status`, and only `verified`
+unlocks everything. Below that, `apply_patch.sh` stops unless you pass
+`ALLOW_UNVERIFIED=1`, and then runs only the fixes that cannot carry another
+machine's constants. What each status word means and what it allows:
+[`docs/hardware/README.md`](docs/hardware/README.md#what-the-status-words-mean).
+
+Two board sections are `verified`: `ZQC-P` `M1010`, the machine this was built
+on, and `ZQC-P` `M1050`, on the strength of a dump, an ACPI set and an install
+log from that machine. Detection reports which board it decided on, and says so
+plainly when that is not one the profile describes.
 
 ### Options
 
@@ -300,7 +252,7 @@ table in [`patch/acpi-override/`](patch/acpi-override/), which is that firmware
 table with one statement moved.
 
 **Other people's code keeps their licence.** The patches under
-[`patch/fingerprint/sensors/`](patch/fingerprint/sensors/) are third-party work
+[`patch/fingerprint/`](patch/fingerprint/) are third-party work
 with authorship intact, each carrying its origin in the `recipe.conf` beside it;
 the kernel module in [`patch/fan/`](patch/fan/) and the patch in
 [`patch/keyboard-atkbd/`](patch/keyboard-atkbd/) are GPL-2.0.

@@ -25,8 +25,8 @@ specific unit's firmware, and a foreign SSDT is not a fix that fails quietly.
 
 A profile is one file per product, holding one `[board ...]` section per board
 revision, and each section carries its own `status`. HONOR ships one product
-code as several machines, so trust is per board: `ZQC-P` board `M1010` is
-`verified` here and board `M1050` is `reported`, in the same file.
+code as several machines, so trust is per board and each section is judged on
+its own evidence.
 
 | `status` | Meaning | What may run |
 |---|---|---|
@@ -45,19 +45,11 @@ anybody with one of these laptops can do, and `ZQC-P` `M1050` is there to show
 it works: nine fixes are listed on that board because its owner reported in
 detail three times.
 
-Fixes are sorted into trust tiers in [`lib/profile.sh`](lib/profile.sh):
-
-- **A** derives its inputs from the running machine, or matches on a device id
-  and finds nothing on hardware it was not meant for. Safe to offer anywhere.
-- **B** carries model specific constants, an audio subsystem id, a measured
-  backlight floor, EC register offsets. Needs `status=verified` on the section
-  matching the board in front of you.
-- **C** installs a binary taken from one machine's firmware. Only ever from
-  that machine.
-
-So on an unverified board the answer to "why did it skip everything
-interesting" is: because nobody has confirmed those constants on your
-hardware yet. Sending the dump is how that changes.
+Fixes are sorted into trust tiers, assigned in
+[`lib/profile.sh`](lib/profile.sh) and explained with the status words in
+[`docs/hardware/README.md`](docs/hardware/README.md#what-the-status-words-mean).
+A new fix needs a tier before a profile may list it, and `tools/selftest.sh`
+refuses one that has no tier.
 
 Check what you have. The third line is the one that decides which section
 applies, and it is the one people forget to include in a report:
@@ -82,9 +74,11 @@ Use the bug report template. What makes a report actionable here:
 
 ### Add a model
 
-This is the most valuable thing right now. The repository has verified data for
+This is the most valuable thing right now. The repository has been run on
 exactly one machine, and the constants that matter, PCI subsystem IDs, USB and
-HID ids, EC register offsets, panel VBT, are different on every model.
+HID ids, EC register offsets, panel VBT, are different on every model. One
+further board is `verified` on the strength of a dump and its owner's reports,
+which is the most a second machine has managed so far.
 
 A profile is strict `key=value`, described field by field in
 [`devices/TEMPLATE.conf`](devices/TEMPLATE.conf). It is parsed, never sourced,
@@ -93,19 +87,33 @@ keys are an error rather than a warning, so a typo cannot silently drop a
 value, and anything you have not read off the hardware is written as
 `unknown` rather than guessed.
 
-The fields are in two groups, and the split is the whole point:
+A profile holds **hardware inventory** and nothing else: everything that can be
+read off a running unit or found in a dump, plus what identifies the machine and
+how far it is trusted. Device ids, panel type, `max_brightness`. A dump alone is
+enough to fill it in, which is why a `reported` profile can be complete. Several
+of these accept a space separated list, for models sold with different parts in
+different regions; the installer probes for the one actually fitted rather than
+trusting the first entry.
 
-- **Hardware inventory**, everything that can be read off a running unit or
-  found in a dump: device ids, panel type, `max_brightness`, EC offsets. A
-  dump alone is enough to fill this in, which is why a `reported` profile can
-  be complete here. Several of these accept a space separated list, for models
-  sold with different parts in different regions; the installer probes for the
-  one actually fitted rather than trusting the first entry.
-- **Fix parameters**, prefixed `param_`: values somebody had to measure or
-  choose with the laptop in front of them. The backlight floor is a
-  measurement made by eye; the audio fixup is a piece of kernel code written
-  for one board. Nothing here can be derived from a dump, and that is the
-  practical difference between `reported` and `verified`.
+What a **fix** needs in order to run on that machine is not in the profile. It
+lives with the fix:
+
+```
+patch/<fix>/<model>/<board>/recipe.conf
+```
+
+Same two words, one level further down. `patch/fan/zqc-p/M1010/` holds that
+board's EC tachometer offsets, `patch/oled-backlight/zqc-p/M1010/` its backlight
+floor, `patch/micmute/zqc-p/M1010/` the HID-BPF program for the touchscreen it
+ships. None of those describes the machine; they describe what one fix does on
+it, and none of them can be derived from a dump. Somebody had to measure or
+choose each with the laptop in front of them, and that is the practical
+difference between `reported` and `verified`.
+
+The layout, and the steps to add a machine to a fix, are in
+[`patch/README.md`](patch/README.md#layout). `tools/selftest.sh` enforces the
+rules there, so a mistake in one is a failed check rather than a surprise on
+somebody's laptop.
 
 Use the "Hardware dump for a new model" template. It lists the commands to run.
 Everything it asks for is read-only.
@@ -166,62 +174,86 @@ HONOR_ZQC-P_M1010/
 │   ├── profile.sh                  # profile parser, validator and trust tiers
 │   ├── detect.sh                   # DMI plus PCI -> which profile applies
 │   ├── gate.sh                     # the check every installer runs, and migration helpers
+│   ├── variant.sh                  # patch/<fix>/<model>/<board>/ — the per-machine parts
+│   ├── ksrc.sh                     # which upstream tag matches the running kernel
 │   └── distro.sh                   # what differs between distributions
 ├── patch/                          # one self-contained directory per fix
 │   ├── README.md                   # index + status table
 │   ├── acpi-override/              # patched SSDT27 — touchpad, touchscreen, keyboard
-│   │   ├── SSDT27_TPD0.aml         #   ready-to-install ACPI override (binary)
-│   │   ├── SSDT27_TPD0.dsl         #   human-readable source
+│   │   ├── zqc-p/M1010/            #   the table, and the recipe that names it
+│   │   ├── zqc-p/M1050/            #   same_as=zqc-p/M1010
+│   │   ├── xwc-p/M1110/            #   same_as — the table is byte-identical there
 │   │   └── acpi_override.install   #   mkinitcpio install hook (early CPIO)
 │   ├── keyboard-atkbd/             # upstream quirk, reference only, needs a kernel rebuild
-│   │   ├── 0001-Input-atkbd-skip-deactivate-for-HONOR-ZQC-P.patch
+│   │   ├── zqc-p/M1010/            #   the patch, and the recipe that names it
 │   │   └── README.md
 │   ├── auto-rebuild/               # package-manager hooks: keep fixes applied across updates
+│   │   ├── zqc-p/M1010/            #   every fix has these, even the ones with no numbers
+│   │   ├── zqc-p/M1050/
 │   │   ├── rebuild.sh              #   dispatcher, installed to /usr/local/lib/honor/
 │   │   ├── 95-honor-kernel-modules.hook
 │   │   ├── 96-honor-libfprint.hook
 │   │   └── install.sh
 │   ├── oled-backlight/             # firmware backlight floor is too low for this panel
+│   │   ├── zqc-p/M1010/            #   backlight_min=12, measured by eye
+│   │   ├── zqc-p/M1050/            #   backlight_min=unknown, same panel, nobody has looked
 │   │   ├── vbt-min.py              #   inspect / patch brightness_min_level in a VBT
 │   │   ├── measure-floor.sh        #   find the lowest duty the panel renders evenly
 │   │   ├── install.sh              #   extract, patch, initramfs + cmdline
 │   │   └── uninstall.sh
 │   ├── psr-band/                   # PSR2 selective update paints a band under the pointer
+│   │   ├── zqc-p/M1010/            #   what was seen, and on what
+│   │   ├── zqc-p/M1050/
 │   │   ├── install.sh              #   set the PSR level on the cmdline, and live
 │   │   └── uninstall.sh
 │   ├── battery/                    # the charge limit the EC quietly ignores
+│   │   ├── zqc-p/M1010/            #   presets=40-70 70-90 95-100, each read back at EC 0x85
+│   │   ├── zqc-p/M1050/
 │   │   ├── honor-battery-threshold.sh
 │   │   ├── honor-battery-threshold.service
 │   │   └── install.sh
-│   ├── hotkey-actions/            # acts on the keys no desktop binds
+│   ├── hotkey-actions/             # acts on the keys no desktop binds
+│   │   └── zqc-p/M1010/
 │   ├── hotkeys/                    # Fn keys the huawei-wmi keymap does not know
-│   │   ├── huawei-wmi-honor-keymap.patch
-│   │   ├── 61-honor-keyboard.hwdb
+│   │   ├── zqc-p/M1010/            #   keymap patch + hwdb, captured on that board
+│   │   ├── zqc-p/M1050/            #   same_as=zqc-p/M1010
 │   │   └── install.sh
 │   ├── cdclk-ptl/                  # boot-time screen corruption on kernels 7.1.6+
+│   │   ├── zqc-p/M1010/            #   the defect, and where it was seen
+│   │   ├── zqc-p/M1050/
 │   │   ├── 0001-drm-i915-cdclk-avoid-spurious-cdclk-sanitization-on-PTL.patch
 │   │   └── install.sh              #   rebuild xe.ko from the distro kernel source
 │   ├── edp-dsc/                    # panel driven at 6 bpc because DSC is never tried
+│   │   ├── zqc-p/M1010/
+│   │   ├── zqc-p/M1050/
 │   │   ├── 0001-drm-i915-dp-prefer-DSC-over-driving-eDP-below-8-bpc.patch
 │   │   └── install.sh              #   both xe patches build through lib/xe-build.sh
 │   ├── touchpad-edge/              # left-edge slide gesture -> brightness keys
-│   │   ├── honor-tops0102-edge.bpf.c   # HID-BPF device-event hook
+│   │   ├── zqc-p/M1010/            #   HID-BPF device-event hook + recipe
+│   │   ├── zqc-p/M1050/            #   same_as=zqc-p/M1010
 │   │   └── install.sh              #   build + install via udev-hid-bpf
 │   ├── micmute/                    # phantom KEY_MICMUTE from the touchscreen
-│   │   ├── honor-ftsc1000-micmute.bpf.c     # HID-BPF descriptor fixup
+│   │   ├── zqc-p/M1010/            #   HID-BPF descriptor fixup + recipe
+│   │   ├── zqc-p/M1050/            #   same_as=zqc-p/M1010
 │   │   └── install.sh              #   build + install via udev-hid-bpf
 │   ├── headset-mic/                # ALC256 quirk for PCI SSID 1ee7:209d
-│   │   ├── alc269-honor-zqc-p-m1010.patch
+│   │   ├── zqc-p/M1010/            #   the alc269.c change, for reference
+│   │   ├── zqc-p/M1050/            #   same_as=zqc-p/M1010
 │   │   └── install.sh              #   build+install snd-hda-codec-alc269.ko
 │   ├── sof-audio/                  # preventive IPC4 backport (PR #5762)
+│   │   ├── zqc-p/M1010/
+│   │   ├── zqc-p/M1050/
 │   │   ├── 0001-ASoC-SOF-ipc4-topology-Refresh-copier-IPC-payload-before-widget-setup.patch
 │   │   └── install.sh              #   build+install snd-sof.ko (updates/ overlay)
-│   ├── fingerprint/                # Goodix 27c6:6f94 in libfprint
-│   │   ├── libfprint-goodixmoc-honor-zqc-p-6f94.patch
+│   ├── fingerprint/                # one reader per board, see its README
+│   │   ├── zqc-p/M1010/            #   Goodix 27c6:6f94, global units
+│   │   ├── zqc-p/M1050/            #   EgisTec 1c7a:05aa, Chinese units
+│   │   ├── fmb-p/any/              #   FPC 10a5:9924, revision not known
 │   │   ├── PKGBUILD                #   pacman-owned rebuild, avoids file conflicts
-│   │   ├── sensors/               #   one recipe per reader, see its README
 │   │   └── install.sh
 │   └── fan/                        # honor-ec-sensors — EC fan tachometers (read-only)
+│       ├── zqc-p/M1010/            #   ec_fan0=0x2c ec_fan1=0x2e, from the DSDT
+│       ├── zqc-p/M1050/            #   the same, from that board own dump
 │       ├── honor-ec-sensors.c
 │       ├── Makefile / dkms.conf
 │       └── install.sh

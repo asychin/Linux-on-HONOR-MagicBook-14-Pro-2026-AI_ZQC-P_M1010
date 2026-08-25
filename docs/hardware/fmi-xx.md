@@ -63,8 +63,7 @@ has not earned.
 Nothing from here, and that is why `fixes` is empty. The profile exists so that
 detection recognises the machine and says so.
 
-Not established: `touchscreen_hid`, `panel`, `backlight_max`, `ec_fan0`,
-`ec_fan1`, `battery_charge_presets` and every `param_*`. Whether this EC uses
+Not established: `touchscreen_hid`, `panel`, `backlight_max`, and anything the tier B fixes would need. Whether this EC uses
 the same charge presets and the same tachometer offsets as the Intel machines is
 a genuinely open question, and one run of
 [`tools/collect-hwinfo.sh`](../../tools/collect-hwinfo.sh) would answer it.

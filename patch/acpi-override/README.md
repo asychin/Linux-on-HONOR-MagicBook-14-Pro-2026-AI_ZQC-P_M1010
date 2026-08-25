@@ -52,7 +52,7 @@ distinguishable from the stock table at a glance.
 `apply_patch.sh` installs the compiled table and an initramfs hook:
 
 ```
-patch/acpi-override/SSDT27_TPD0.aml     -> /usr/lib/firmware/acpi/SSDT27_TPD0.aml
+patch/acpi-override/zqc-p/M1010/SSDT27_TPD0.aml     -> /usr/lib/firmware/acpi/SSDT27_TPD0.aml
 patch/acpi-override/acpi_override.install -> /etc/initcpio/install/acpi_override
 ```
 

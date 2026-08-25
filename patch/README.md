@@ -5,6 +5,49 @@ Each subdirectory is one self-contained fix: the patch or source it needs, an
 the way it does. Every installer is safe to re-run and locates its own files,
 so it can be invoked directly from anywhere.
 
+## Layout
+
+Inside a fix, everything that belongs to **one machine** is under
+
+```
+patch/<fix>/<model>/<board>/recipe.conf
+```
+
+the same two words `devices/<model>.conf` uses to identify a machine, and the
+same split one level further down. The profile says what the machine *is*: its
+identity, its trust, the ids of the parts fitted. The directory here says what
+this fix has to *do* on it: which table to install, which program to build,
+which EC offsets to read, which floor the panel wants.
+
+That is what makes preparing a fix for a new machine a matter of writing one
+file next to the machines that already have one, instead of finding the place
+inside an installer where the last machine was special-cased and adding a
+branch beside it. Two machines that need the same files do not get two copies:
+the second is a `recipe.conf` holding `same_as=<model>/<board>` and nothing
+else, and `tools/selftest.sh` refuses two identical files under one fix so a
+copy cannot be made by accident and then drift.
+
+`any` in place of the board revision is the directory form of the profile's
+`[board *]`: it means every revision of that model, and it is what to write when
+something is known to be in a model and nobody can say which revision.
+
+To add a machine to a fix:
+
+1. `mkdir -p patch/<fix>/<model>/<board>/`. Model lowercase, board exactly as
+   its `[board ...]` header spells it.
+2. Write `recipe.conf`. `name`, `status` and `origin` always. `device=<vid>:<pid>`
+   where the fix can see the part on a bus, and the installer will then refuse
+   if the unit in front of it has a different one: a profile records what a
+   board usually ships, the bus records what it shipped.
+3. If the machine needs the same files as one already here, add
+   `same_as=<model>/<board>` and stop. Otherwise put the files in that directory
+   and name them in the recipe.
+4. List the fix in that board's section of its profile.
+
+[`lib/variant.sh`](../lib/variant.sh) does the lookup for every fix.
+[`docs/ADDING-A-MODEL.md`](../docs/ADDING-A-MODEL.md) is the wider procedure for
+a machine nobody has described yet.
+
 Developed and tested on BIOS 1.10, Core Ultra X9 388H (Panther Lake), CachyOS,
 kernel 7.1.5.
 

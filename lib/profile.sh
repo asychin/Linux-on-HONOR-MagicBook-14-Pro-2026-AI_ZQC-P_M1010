@@ -38,7 +38,6 @@
 #   [board M1010]
 #   status=verified
 #   platform=pantherlake
-#   param_backlight_min=12
 #   fixes=...
 #
 #   [board M1050]
@@ -64,14 +63,18 @@ PROFILE_KEYS=(
     # board revision, and a second place to write it down is a second place for
     # it to be wrong.
     dmi_vendor dmi_product dmi_sku dmi_board
-    # hardware inventory: facts, all of them fillable from a hardware dump
+    # hardware inventory: facts, all of them fillable from a hardware dump, and
+    # all of them confirmable on a bus by the installer that reads them.
     touchscreen_hid touchpad_hid audio_ssid fingerprint_usb
-    panel backlight_max ec_fan0 ec_fan1 battery_charge_presets camera_usb
+    panel backlight_max camera_usb
     cpu
-    # fix parameters: not readable off the machine. Somebody had to measure or
-    # choose these with that laptop in front of them, which is the difference
-    # between a reported profile and a verified one.
-    param_backlight_min param_audio_fixup
+    # There are deliberately no fix parameters here. A backlight floor, the EC
+    # tachometer offsets, the charge pairs an EC arms and the alc269.c fixup a
+    # codec needs are not descriptions of the machine, they are what one fix has
+    # to do on it, and they live with that fix in
+    # patch/<fix>/<model>/<board>/recipe.conf. Keeping them there is what makes
+    # preparing a fix for a board a matter of writing one file rather than
+    # editing a file that every other board also reads.
     # which fixes apply
     fixes
 )
@@ -137,6 +140,48 @@ declare -gA FIX_TIER=(
     [oled-backlight]=B
     [acpi-override]=A
 )
+
+# The order a `fixes=` list is written in.
+#
+# It is the order apply_patch.sh runs them, so reading a profile and reading a
+# run put the same things in the same place, and two sections of one file can be
+# compared line by line instead of by searching. Left to itself the order
+# drifted: the two ZQC-P sections listed the same kind of thing in two different
+# sequences and neither was wrong, which is exactly the sort of difference that
+# hides a real one.
+#
+# Not a second copy of FIX_TIER: tools/selftest.sh checks that the two name the
+# same set of fixes, so a fix added to one and forgotten in the other is caught
+# rather than silently sorted last.
+declare -ga FIX_ORDER=(
+    acpi-override
+    psr-band
+    oled-backlight
+    cdclk-ptl
+    edp-dsc
+    headset-mic
+    sof-audio
+    micmute
+    touchpad-edge
+    fan
+    fingerprint
+    battery
+    hotkeys
+    hotkey-actions
+    auto-rebuild
+)
+
+# fix_order_sorted <fix> [<fix> ...] -> the same fixes in FIX_ORDER order
+#
+# For writing a profile, and for saying in an error message what the line should
+# have looked like.
+fix_order_sorted() {
+    local want=" $* " f out=()
+    for f in "${FIX_ORDER[@]}"; do
+        [[ "$want" == *" $f "* ]] && out+=("$f")
+    done
+    printf '%s' "${out[*]}"
+}
 
 # The parsed file: a base block, and PROFILE_SECT_N sections. Bash has no nested
 # arrays, so section values live in one associative array under "<index>|<key>".

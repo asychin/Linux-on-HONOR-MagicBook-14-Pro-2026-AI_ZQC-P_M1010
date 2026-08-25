@@ -63,8 +63,9 @@ whatever sysfs says.
 
 ## What the installer does
 
-1. Refuses a pair that is not in the profile's `battery_charge_presets`, rather
-   than writing it and letting it quietly do nothing.
+1. Refuses a pair that is not in `presets` in this fix's own directory for that
+   machine, `patch/battery/<model>/<board>/recipe.conf`, rather than writing it
+   and letting it quietly do nothing.
 2. Writes the pair, then **reads EC `0x85` back** and says whether the EC armed
    itself. The point of this fix is that a successful write proves nothing.
 3. Installs `/etc/honor-battery.conf` and two small units that re-apply the
@@ -89,8 +90,9 @@ broken again.
 
 ## Adding a model
 
-`battery_charge_presets` in the device profile lists the pairs that model's EC
-arms for. Find them by writing a candidate pair and reading EC `0x85`:
+`presets` in `patch/battery/<model>/<board>/recipe.conf` lists the pairs that
+board's EC arms for. Find them by writing a candidate pair and reading EC
+`0x85`:
 
 ```sh
 echo "60 80" | sudo tee /sys/devices/platform/huawei-wmi/charge_control_thresholds
@@ -98,8 +100,9 @@ sudo python3 -c "print(hex(open('/sys/kernel/debug/ec/ec0/io','rb').read(0x100)[
 ```
 
 Nonzero means that pair works on your machine. Please put what you find in an
-issue: the preset sets may well differ between models, and right now this list
-is verified on one.
+issue: the preset sets may well differ between models, and this list has been
+measured this way on the reference machine and nowhere else. Where another
+board carries it, it is inherited, and the board's own page says so.
 
 ## Credit
 
@@ -140,8 +143,8 @@ Corroborating sightings elsewhere in the family:
 * a `BCC-N` probe reports `charge-threshold-enabled: yes`, which is a stronger
   claim than the others make. Which pairs its EC honours is unmeasured
 
-`battery_charge_presets` stays `unknown` on every profile where nobody has run
-the write-and-read-EC-`0x85` test. It is two commands, in
+No board gets a `presets` line until somebody has run the
+write-and-read-EC-`0x85` test on it. It is two commands, in
 [docs/TESTING.md](../../docs/TESTING.md#4-the-battery-limit).
 
 > One script in the wild, `laeo/Honor-XWC-Linux-Patch`'s `battery-limit.sh`,

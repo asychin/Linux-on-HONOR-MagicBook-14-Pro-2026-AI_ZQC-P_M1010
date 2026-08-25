@@ -213,40 +213,33 @@ XPPen, Wacom, TUXEDO, Rapoo, Microsoft, Logitech and others — plus
 this repository, this one and the touchpad-edge translator, are exactly the
 shape that directory takes. Neither has been submitted.
 
-## Layout: one program per touchscreen
+## Layout: one directory per machine
 
 ```
 patch/micmute/
     install.sh
     hid-bpf-reapply.sh          the boot-time re-apply, no ids in it
     honor-hid-bpf-reapply.service
-    touchscreens/
-        2808-5662-focaltech-ftsc1000/
+    zqc-p/
+        M1010/
             recipe.conf
             honor-ftsc1000-micmute.bpf.c
+        M1050/
+            recipe.conf         same_as=zqc-p/M1010
 ```
 
-Same shape as [`../fingerprint/sensors/`](../fingerprint/sensors/), for the same
-reason. The fixup rewrites usage page `0xff01` where one chip's report
-descriptor uses it for a wide variable field. That is a statement about that
-chip, not about a laptop, so it cannot be widened by editing a match: another
-touchscreen doing something else on that page needs its own program.
+The `<model>/<board>` layout, `same_as`, `any`, and how to add a machine are
+the same for every fix and are described once, in
+[`../README.md`](../README.md#layout).
 
-The installer takes `touchscreen_hid` from the board section of the device
-profile, **confirms it against the HID bus** rather than trusting the file, and
-then picks the directory whose name starts with the id it actually found. So a
-unit fitted with a part the profile does not list gets a refusal that names the
-part, not a program built for a chip that is not there.
-
-To add one:
-
-1. `mkdir patch/micmute/touchscreens/<vid>-<pid>-<chip>/`
-2. write the program there. It is compiled with `-DHID_VID` and `-DHID_PID`
-   from the probed id, so use those names; keep `#ifndef` fallbacks so it still
-   builds by hand. The file has to be named `honor-<chip>-micmute.bpf.c`, which
-   is how `uninstall_patch.sh` finds the object it produced.
-3. write `recipe.conf` with `name`, `program`, `status` and `origin`.
-4. list `micmute` in the board sections that ship that part.
+What is specific to this one: the fixup rewrites usage page `0xff01` where one
+chip's report descriptor uses it for a wide variable field. That is a statement
+about that chip, not about a laptop, so it cannot be widened by editing a match.
+A machine with a different touchscreen needs its own program, and that program
+has to be named `honor-<chip>-micmute.bpf.c`, which is how `uninstall_patch.sh`
+finds the object it produced. It is compiled with `-DHID_VID` and `-DHID_PID`
+taken from the id found on the bus, so use those names and keep `#ifndef`
+fallbacks so it still builds by hand.
 
 `tools/selftest.sh` checks the naming, that the recipe names a file that exists,
 and that no device id has been written into anything installed.

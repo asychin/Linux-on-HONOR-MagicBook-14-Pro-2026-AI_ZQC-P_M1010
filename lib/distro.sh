@@ -213,6 +213,30 @@ _cmdline_var() {
     echo unknown
 }
 
+# distro_cmdline_show   print the line that actually carries the command line
+#
+# Six places printed this back to the user after editing it, with three
+# different greps between them. Three of those fell back to `^[^#]`, the first
+# line of the file that is not a comment, which on a Limine machine is
+# `ESP_PATH="/boot"`. So the uninstaller said it had removed a parameter and
+# then showed a line the parameter was never on. Which line owns the command
+# line is already decided by _cmdline_var; this reuses that answer instead of
+# guessing again.
+distro_cmdline_show() {
+    local f kind
+    f="$(distro_cmdline_file)" || return 1
+    kind="$(_cmdline_var "$f")"
+    case "$kind" in
+        plain)  cat "$f" ;;
+        limine) grep -hE '^KERNEL_CMDLINE\[[^]]*\]\+?=' "$f" ;;
+        grub)   grep -hE '^GRUB_CMDLINE_LINUX_DEFAULT=' "$f" ;;
+        grub2)  grep -hE '^GRUB_CMDLINE_LINUX=' "$f" ;;
+        # Nothing recognisable owns it. Say that, rather than printing whatever
+        # happens to be on the first line.
+        *)      printf '(no recognisable command line assignment in %s)\n' "$f" ;;
+    esac
+}
+
 # distro_cmdline_add <param>   idempotent
 distro_cmdline_add() {
     local param="$1" f kind key

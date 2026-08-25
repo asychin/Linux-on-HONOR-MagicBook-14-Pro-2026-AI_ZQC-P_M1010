@@ -62,12 +62,11 @@ apart. See [the ZQC-P page](zqc-p.md#libinput-has-a-quirk-for-this-touchpad-gate
 
 ## Not established
 
-`camera_usb`, `backlight_max`, `ec_fan0`, `ec_fan1`,
-`battery_charge_presets`, every `param_*`, and whether the internal keyboard
+`camera_usb`, `backlight_max`, and anything the tier B fixes would need, and whether the internal keyboard
 needs anything. `MRA-XXX` is not in the upstream `atkbd` quirk table and the
 probe shows no `i8042` parameter on the command line.
 
 `panel=oled` is recorded from the panel part number, which FMB-P's EDID
-independently declares as Organic LED. `param_backlight_min` still has to be
+independently declares as Organic LED. The backlight floor still has to be
 measured on the panel before [`patch/oled-backlight/`](../../patch/oled-backlight/)
 could be offered, so it is not listed.

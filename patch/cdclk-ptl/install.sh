@@ -57,6 +57,14 @@ die()  { printf '\033[1;31m==>\033[0m %s\n' "$*" >&2; exit 1; }
 source "${SCRIPT_DIR}/../../lib/gate.sh"
 honor_gate cdclk-ptl
 
+# Every fix is looked up the same way, including the ones that carry no
+# numbers of their own: patch/cdclk-ptl/<model>/<board>/ records that this
+# machine was considered and on what evidence. See lib/variant.sh.
+variant_find "$SCRIPT_DIR" || die \
+    "this fix has nothing for $(profile_get model) board ${PROFILE_BOARD:-?}.
+    Covered: $(variant_known "$SCRIPT_DIR")"
+log "machine: $(variant_note)"
+
 # The bug needs display IP 30, which arrived with Panther Lake. Earlier
 # platforms still have the CD2X pipe field the sanitization compares.
 if [[ "$(profile_get platform)" != "pantherlake" ]]; then

@@ -30,7 +30,7 @@
 #      Step [9/18] rebuilds snd-hda-codec-alc269.ko with the SND_PCI_QUIRK
 #      entry our hardware needs (matches the existing HONOR BRB-X M1010
 #      sibling); see patch/headset-mic/install.sh and the upstream patch
-#      at patch/headset-mic/alc269-honor-zqc-p-m1010.patch.
+#      at patch/headset-mic/zqc-p/M1010/alc269-headset-mic.patch.
 #   4) PREVENTIVE — SOF DSP IPC4 copier stale-payload race on suspend/
 #      resume. On Intel Panther Lake the IPC4 copier widget's
 #      ipc_config_data buffer is cached at first ipc_prepare and reused;
@@ -154,6 +154,11 @@ req cp
 source "$SCRIPT_DIR/lib/profile.sh"
 source "$SCRIPT_DIR/lib/detect.sh"
 source "$SCRIPT_DIR/lib/distro.sh"
+# Where a fix keeps the parts of itself that belong to one machine:
+# patch/<fix>/<model>/<board>/. Sourced here as well as from lib/gate.sh,
+# because the ACPI override is applied from this file rather than from an
+# installer of its own.
+source "$SCRIPT_DIR/lib/variant.sh"
 
 detect_profile "$SCRIPT_DIR/devices" && DETECT_RC=0 || DETECT_RC=$?
 
@@ -340,10 +345,26 @@ fix_enabled acpi-override || ACPI_OK=0
 #                                       different machine or a BIOS that
 #                                       rewrote it, and installing then risks
 #                                       a machine that does not boot
+# Which table, and which untouched table it was built from, come out of
+# patch/acpi-override/<model>/<board>/recipe.conf, laid out like the profile.
+# The directory only decides which candidate is offered. What decides whether it
+# is installed is the md5 comparison below, against the firmware actually
+# running, which is why a board section nobody has verified can still list this.
+ACPI_OEM_ID=""
 if (( ACPI_OK )); then
-    AML="$PATCH_DIR/acpi-override/SSDT27_TPD0.aml"
+    if variant_find "$PATCH_DIR/acpi-override"; then
+        AML="${VARIANT_DIR}/$(recipe_get table)"
+        STOCK_REF="$SCRIPT_DIR/$(recipe_get stock_ref)"
+        ACPI_OEM_ID="$(recipe_get oem_table_id)"
+    else
+        echo "    [skip] no SSDT recorded for $(profile_get model) board ${PROFILE_BOARD:-?}."
+        echo "    Covered: $(variant_known "$PATCH_DIR/acpi-override")"
+        ACPI_OK=0
+    fi
+fi
+if (( ACPI_OK )); then
     AML_OEM=$(dd if="$AML" bs=1 skip=16 count=8 2>/dev/null | tr -d '\0 ')
-    if [[ "$AML_OEM" != "I2C_DEVT" ]]; then
+    if [[ "$AML_OEM" != "$ACPI_OEM_ID" ]]; then
         echo "    [skip] $AML is not the expected table (OEM table id '$AML_OEM')."
         ACPI_OK=0
     fi
@@ -356,13 +377,12 @@ acpi_live_table() {
     for f in /sys/firmware/acpi/tables/SSDT*; do
         [[ -r "$f" ]] || continue
         oem=$(dd if="$f" bs=1 skip=16 count=8 2>/dev/null | tr -d '\0 ')
-        [[ "$oem" == "I2C_DEVT" ]] && { printf '%s' "$f"; return 0; }
+        [[ "$oem" == "$ACPI_OEM_ID" ]] && { printf '%s' "$f"; return 0; }
     done
     return 1
 }
 
 if (( ACPI_OK )); then
-    STOCK_REF="$SCRIPT_DIR/dump/acpi/zqc-p/SSDT27_orig.aml"
     MD5_STOCK=$(md5sum "$STOCK_REF" 2>/dev/null | cut -d' ' -f1)
     MD5_PATCHED=$(md5sum "$AML" | cut -d' ' -f1)
     LIVE="$(acpi_live_table || true)"
@@ -375,7 +395,7 @@ if (( ACPI_OK )); then
             echo "    [skip] cannot read /sys/firmware/acpi/tables, so the table this fix"
             echo "    replaces cannot be identified. Refusing rather than guessing."
         else
-            echo "    [skip] no ACPI table with OEM table id I2C_DEVT on this machine."
+            echo "    [skip] no ACPI table with OEM table id $ACPI_OEM_ID on this machine."
             echo "    This fix is for the firmware bug in that table. Yours does not have it."
         fi
         ACPI_OK=0
@@ -389,7 +409,7 @@ if (( ACPI_OK )); then
             BIOS_NOW=$(cat /sys/class/dmi/id/bios_version 2>/dev/null || echo unknown)
             BIOS_WANT=$(profile_get verified_bios)
             cat <<EOF
-    [skip] this machine's I2C_DEVT table is not the one this fix was built from.
+    [skip] this machine's ${ACPI_OEM_ID} table is not the one this fix was built from.
         yours     ${MD5_LIVE}  ($(stat -c%s "$LIVE") bytes)
         expected  ${MD5_STOCK:-unknown}  ($(stat -c%s "$STOCK_REF" 2>/dev/null || echo ?) bytes)
     Your BIOS is ${BIOS_NOW}; the table on record came from ${BIOS_WANT}. Either a
@@ -428,9 +448,8 @@ fi
 
 ACPI_STYLE="$(distro_acpi_override_style || true)"
 if (( ACPI_OK )); then
-install -Dm0644 "$PATCH_DIR/acpi-override/SSDT27_TPD0.aml" \
-                /usr/lib/firmware/acpi/SSDT27_TPD0.aml
-echo "    /usr/lib/firmware/acpi/SSDT27_TPD0.aml"
+install -Dm0644 "$AML" "/usr/lib/firmware/acpi/$(basename "$AML")"
+echo "    /usr/lib/firmware/acpi/$(basename "$AML")"
 case "$ACPI_STYLE" in
     mkinitcpio)
         install -Dm0755 "$PATCH_DIR/acpi-override/acpi_override.install" \
@@ -527,7 +546,7 @@ kver_at_least() {
 if (( ! ACPI_OK )); then
     echo "    skipped — the keyboard workaround goes with the ACPI override"
 elif distro_cmdline_add "i8042.dumbkbd=1"; then
-    echo "    $(grep -hE 'CMDLINE' "$(distro_cmdline_file)" | head -1)"
+    distro_cmdline_show | sed 's/^/    /'
 else
     echo "    add i8042.dumbkbd=1 to your bootloader command line manually."
 fi
@@ -781,7 +800,19 @@ echo "[15/18] Battery charge limit (EC preset)"
 if ! fix_enabled battery; then
     :
 elif bash "$PATCH_DIR/battery/install.sh" >/dev/null; then
-    echo "    OK — $(grep -oE '"'"'[0-9]+ [0-9]+'"'"' /etc/honor-battery.conf 2>/dev/null | head -1)"
+    # Read the preset out of the file rather than going fishing for two digits
+    # in it. What was here did not run at all: the single-quote escape that is
+    # correct inside a sed expression is not correct inside a double-quoted
+    # echo, and there it fell apart into a pattern of its own quote characters
+    # plus a second file argument that does not exist. grep matched nothing,
+    # its error went to /dev/null, and every run since printed OK, a dash, and
+    # nothing after it. That is the line in issue 11.
+    preset="$(sed -n 's/^CHARGE_PRESET="\(.*\)"$/\1/p' /etc/honor-battery.conf 2>/dev/null | head -1)"
+    if [[ -n "$preset" ]]; then
+        echo "    OK — charging between ${preset% *}% and ${preset#* }%"
+    else
+        echo "    OK"
+    fi
 else
     step_warn "battery limit failed — everything else still applies."
 fi

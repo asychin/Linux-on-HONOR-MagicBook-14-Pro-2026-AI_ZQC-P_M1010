@@ -123,8 +123,7 @@ covers this machine from **6.19** on, without anybody having asked for it.
 ## Not established
 
 `touchscreen_hid`, `audio_ssid`, `fingerprint_usb`, `camera_usb`,
-`backlight_max`, `ec_fan0`, `ec_fan1`, `battery_charge_presets`, and every
-`param_*`.
+`backlight_max`, and anything the tier B fixes would need.
 
 Some of these have a plausible answer that is deliberately **not** written into
 the profile:
@@ -134,9 +133,9 @@ the profile:
 | `touchscreen_hid` | both published Geek Edition configurations give 1.37 kg, which Chinese reviews call the non-touch weight, and neither spec sheet lists touch. Probably no touchscreen, but "probably absent" is not `none` |
 | `fingerprint_usb` | a reader is fitted. China-market machines across this family carry the LighTuning `1c7a:05aa`. Inference, not a reading |
 | `camera_usb` | vendor `0x3277` is this family's camera supplier without exception. The product half is genuinely unknown, and the installer acts on the whole id |
-| `ec_fan0` / `ec_fan1` | ZQC-P and FMB-P both use `0x2c` and `0x2e`. A different EC generation is exactly the case where guessing an offset writes to the wrong register |
-| `battery_charge_presets` | `40-70 70-90 95-100` on both neighbours. Needs the write-and-read-EC-`0x85` test from [TESTING.md](../TESTING.md#4-the-battery-limit) |
+| `ec_fan0` / `ec_fan1` in `patch/fan/fmb-pm/<board>/` | ZQC-P and FMB-P both use `0x2c` and `0x2e`. A different EC generation is exactly the case where guessing an offset writes to the wrong register |
+| `presets` in `patch/battery/fmb-pm/<board>/` | `40-70 70-90 95-100` on both neighbours. Needs the write-and-read-EC-`0x85` test from [TESTING.md](../TESTING.md#4-the-battery-limit) |
 | `backlight_max` | must **not** be copied from ZQC-P's `704`, which is a Panther Lake figure from a different BIOS-programmed PWM period. One line of sysfs settles it |
 
-The machine's DSDT is already on sledeil's disk, so `ec_fan0` and `ec_fan1` are
+The machine's DSDT is already on sledeil's disk, so the two offsets are
 minutes of work for somebody who has it.

@@ -44,6 +44,6 @@ already knows about, and an issue would be genuinely new information.
 ## Not established
 
 Everything except the row above: `touchscreen_hid`, `backlight_max`,
-`ec_fan0`, `ec_fan1`, `battery_charge_presets`, `dmi_sku`, and whether the
+`dmi_sku`, and anything the tier B fixes would need, and whether the
 keyboard needs an `i8042` parameter. `FRB-X` is not in the upstream `atkbd`
 quirk table.

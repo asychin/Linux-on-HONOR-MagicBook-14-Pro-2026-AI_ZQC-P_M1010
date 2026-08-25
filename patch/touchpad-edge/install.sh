@@ -7,8 +7,8 @@
 #
 # Nothing here is tied to one laptop. The touchpad id comes from the board
 # section of the device profile and is then confirmed against the HID bus, and
-# the program itself comes from touchpads/<vid>-<pid>-<chip>/, one directory per
-# touchpad. Adding a second touchpad is adding a directory.
+# the program itself comes from <model>/<board>/, one directory per machine.
+# Adding a machine is adding a directory.
 #
 # Reruns are safe. Nothing here has to be repeated after a kernel update:
 # the BPF object is CO-RE and libbpf relocates it against the running
@@ -22,11 +22,8 @@ if (( EUID != 0 )); then
 fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-FAMILY_DIR="${SCRIPT_DIR}/touchpads"
 INSTALL_DIR="/etc/udev-hid-bpf"
 KVER="$(uname -r)"
-TAG="v${KVER%%-*}"
-BASE_URL="https://raw.githubusercontent.com/gregkh/linux/${TAG}/drivers/hid/bpf/progs"
 WORK=$(mktemp -d /var/tmp/honor-edge-XXXXXX)
 
 trap 'rm -rf "$WORK"' EXIT
@@ -53,22 +50,29 @@ esac
 HID_VID="0x${HID_ID%%:*}"
 HID_PID="0x${HID_ID##*:}"
 
-recipe_find "$FAMILY_DIR" "$HID_ID" || die \
-    "the touchpad here is $HID_ID and this repository has no program for it.
-    Covered: $(recipe_known "$FAMILY_DIR")
+# patch/touchpad-edge/<model>/<board>/, the same two words the profile used to
+# identify this machine. See lib/variant.sh.
+variant_find "$SCRIPT_DIR" || die \
+    "this fix has nothing for $(profile_get model) board ${PROFILE_BOARD:-?}.
+    Covered: $(variant_known "$SCRIPT_DIR")
 
     The gesture is reported on a vendor collection whose byte layout belongs to
     one chip, so the program cannot simply be pointed at another touchpad. See
-    patch/touchpad-edge/README.md for what a new recipe has to contain."
-recipe_load
+    patch/touchpad-edge/README.md for what a new directory has to contain."
 
-SRC="${RECIPE_DIR}/$(recipe_get program)"
-[[ -f "$SRC" ]] || die "${RECIPE_DIR}/recipe.conf names a program that is not there: $(recipe_get program)"
+variant_check_device "$HID_ID" || die \
+    "$(profile_get model) board ${PROFILE_BOARD:-?} is recorded with touchpad
+    $(recipe_get device), and this unit has $HID_ID on the bus.
+    Nothing has been built. Please open an issue with the two ids."
+
+SRC="${VARIANT_DIR}/$(recipe_get program)"
+[[ -f "$SRC" ]] || die "${VARIANT_DIR}/recipe.conf names a program that is not there: $(recipe_get program)"
 OBJ_NAME="$(basename "${SRC%.c}").o"
 # What `udev-hid-bpf list-loaded` calls the program: the object's base name with
 # dashes turned into underscores.
 PROG_TAG="$(basename "${OBJ_NAME%%.*}" | tr '-' '_')"
 
+log "machine  = $(variant_note)"
 log "touchpad $HID_ID: $(recipe_get name)"
 recipe_warn_unverified
 
@@ -97,14 +101,14 @@ grep -qa 'hid_bpf_try_input_report' /sys/kernel/btf/vmlinux \
     On a kernel without it the program will fail to load."
 
 log "kernel  = ${KVER}"
-log "headers = ${TAG}"
 
 # --- 2. fetch the kernel's BPF prog headers -----------------------------------
 # hid_bpf_helpers.h includes hid_report_descriptor_helpers.h, so all three are
 # needed even though this program does not touch the descriptor.
+ksrc_resolve
+log "headers = ${KSRC_TAG}"
 for h in hid_bpf.h hid_bpf_helpers.h hid_report_descriptor_helpers.h; do
-    code=$(curl -sSL --max-time 60 -o "${WORK}/${h}" -w '%{http_code}' "${BASE_URL}/${h}")
-    [[ "$code" == "200" ]] || die "fetch failed: ${BASE_URL}/${h} (HTTP $code)"
+    ksrc_fetch "drivers/hid/bpf/progs/${h}" "${WORK}/${h}"
 done
 bpftool btf dump file /sys/kernel/btf/vmlinux format c > "${WORK}/vmlinux.h"
 
@@ -140,9 +144,9 @@ log "attaching to ${DEV##*/}"
 udev-hid-bpf remove "$DEV" >/dev/null 2>&1 || true
 sleep 1
 udev-hid-bpf add "$DEV" "${INSTALL_DIR}/${OBJ_NAME}" >/dev/null 2>&1 || true
-sleep 1
 
-udev-hid-bpf list-loaded 2>/dev/null | grep -q "$PROG_TAG" \
+edge_attached() { udev-hid-bpf list-loaded 2>/dev/null | grep -q "$PROG_TAG"; }
+gate_wait_until 10 edge_attached \
     || die "the program is not attached to the device"
 
 log "attached"

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# build_patch.sh — rebuild patch/acpi-override/SSDT27_TPD0.aml from patch/acpi-override/SSDT27_TPD0.dsl.
+# build_patch.sh — rebuild a board's SSDT27_TPD0.aml from its .dsl.
 #
 # Steps:
 #   1. Compile the patched DSL with iasl.
@@ -13,8 +13,12 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="$(dirname "$SCRIPT_DIR")"
-SRC="$REPO_DIR/patch/acpi-override/SSDT27_TPD0.dsl"
-OUT="$REPO_DIR/patch/acpi-override/SSDT27_TPD0.aml"
+# The table belongs to a board, so it lives beside the other per-machine parts
+# of its fix: patch/<fix>/<model>/<board>/. Override VARIANT= to rebuild the
+# table of a different one.
+VARIANT="${VARIANT:-zqc-p/M1010}"
+SRC="$REPO_DIR/patch/acpi-override/$VARIANT/SSDT27_TPD0.dsl"
+OUT="$REPO_DIR/patch/acpi-override/$VARIANT/SSDT27_TPD0.aml"
 
 command -v iasl    >/dev/null || { echo "missing iasl (install acpica)" >&2; exit 1; }
 command -v python3 >/dev/null || { echo "missing python3" >&2; exit 1; }

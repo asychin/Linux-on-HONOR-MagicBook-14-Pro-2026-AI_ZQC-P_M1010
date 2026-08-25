@@ -81,6 +81,16 @@ req() { command -v "$1" >/dev/null || { echo "missing required tool: $1" >&2; ex
 source "${SCRIPT_DIR}/../../lib/gate.sh"
 honor_gate sof-audio
 
+# Every fix is looked up the same way, including the ones that carry no
+# numbers of their own: patch/sof-audio/<model>/<board>/ records that this
+# machine was considered and on what evidence. See lib/variant.sh.
+if ! variant_find "$SCRIPT_DIR"; then
+    echo "[fatal] this fix has nothing for $(profile_get model) board ${PROFILE_BOARD:-?}." >&2
+    echo "        Covered: $(variant_known "$SCRIPT_DIR")" >&2
+    exit 1
+fi
+echo "[*] machine: $(variant_note)"
+
 req curl
 req zstdcat
 req zstd
@@ -131,40 +141,23 @@ if [[ ! -d "${BUILD_DIR}/sound/soc/sof" ]]; then
     exit 1
 fi
 
-# Fetch upstream sources matching the running kernel's tag. The gregkh
-# stable-tree mirror on GitHub exposes raw files at tag-based paths.
-TAG="v${KVER%%-*}"
-BASE_URL="https://raw.githubusercontent.com/gregkh/linux/${TAG}"
-
-# Returns non-zero instead of aborting, so callers can decide. Files that do
-# not exist at a given tag are normal: the SOF file list drifts between kernel
-# versions and we build whatever that version actually has.
-fetch_opt() {
-    local rel="$1" dest="$2" code
-    mkdir -p "$(dirname "$dest")"
-    code=$(curl -sSL --max-time 60 -o "$dest" -w '%{http_code}' "${BASE_URL}/${rel}")
-    [[ "$code" == "200" ]] && return 0
-    rm -f "$dest"
-    return 1
-}
-
-fetch() {
-    fetch_opt "$1" "$2" || {
-        echo "[fatal] fetch failed: ${BASE_URL}/${1}" >&2
-        exit 1
-    }
-}
+# Fetch upstream sources matching the running kernel's tag, from the
+# stable-tree mirror. lib/ksrc.sh resolves which tag that is and confirms it
+# against the Makefile there, which matters more here than anywhere else: the
+# check just below decides whether to skip this fix entirely, and it would
+# reach the wrong answer against a tree that is not the running kernel.
+ksrc_resolve
 
 # Detect whether the running kernel's in-tree ipc4-topology.c already has
 # the fix merged. We check for the distinctive comment text the upstream
 # patch adds — if the kernel package was rebuilt with PR #5762 included
 # (or its eventual upstream commit), there's nothing for us to do and
 # any prior overlay can be removed as redundant.
-echo "[*] checking upstream ${TAG} for whether the fix is already merged"
-fetch "sound/soc/sof/ipc4-topology.c" "${WORK}/_check_ipc4-topology.c"
+echo "[*] checking upstream ${KSRC_TAG} for whether the fix is already merged"
+ksrc_fetch "sound/soc/sof/ipc4-topology.c" "${WORK}/_check_ipc4-topology.c"
 if grep -qF 'Refresh copier_data in ipc_config_data for host copiers' \
         "${WORK}/_check_ipc4-topology.c"; then
-    echo "[ok] in-tree ipc4-topology.c at ${TAG} already contains the fix."
+    echo "[ok] in-tree ipc4-topology.c at ${KSRC_TAG} already contains the fix."
     if [[ -f "$KO_OVERLAY" ]]; then
         echo "[*] removing redundant overlay $KO_OVERLAY"
         rm -f "$KO_OVERLAY"
@@ -203,60 +196,29 @@ fi
 # sound/soc/sof/ is taken. The per-platform subdirectories (intel, amd, imx,
 # mediatek, xtensa) build separate modules that this patch does not touch, and
 # pulling them in would cascade into codec and SoundWire dependencies.
-echo "[*] listing sound/soc/sof at ${TAG}"
+echo "[*] listing sound/soc/sof at ${KSRC_TAG}"
 mapfile -t SOF_FILES < <(
-    curl -sSL --max-time 60 \
-        "https://api.github.com/repos/gregkh/linux/contents/sound/soc/sof?ref=${TAG}" \
-    | python3 -c '
-import json, sys
-try:
-    entries = json.load(sys.stdin)
-except Exception:
-    sys.exit(1)
-if not isinstance(entries, list):
-    sys.exit(1)
-for e in entries:
-    if e.get("type") != "file":
-        continue
-    n = e.get("name", "")
-    if n.endswith((".c", ".h")) or n in ("Makefile", "Kconfig"):
-        print(n)
-' || true
+    ksrc_list_dir sound/soc/sof \
+    | grep -E '\.(c|h)$|^Makefile$|^Kconfig$' || true
 )
 
 if (( ${#SOF_FILES[@]} < 20 )); then
-    echo "[fatal] could not list sound/soc/sof at ${TAG} (got ${#SOF_FILES[@]} entries)." >&2
+    echo "[fatal] could not list sound/soc/sof at ${KSRC_TAG} (got ${#SOF_FILES[@]} entries)." >&2
     echo "        GitHub API unreachable or rate-limited. Retry later." >&2
     exit 1
 fi
 echo "[*] fetching ${#SOF_FILES[@]} SOF common sources"
 for f in "${SOF_FILES[@]}"; do
-    fetch "sound/soc/sof/${f}" "${WORK}/sof/${f}"
+    ksrc_fetch "sound/soc/sof/${f}" "${WORK}/sof/${f}"
 done
 
 # sof-acpi-dev.c and friends include a few headers from the platform
 # subdirectories. Headers only: no .c files, so no extra objects are built.
-list_headers() {
-    curl -sSL --max-time 60 \
-        "https://api.github.com/repos/gregkh/linux/contents/sound/soc/sof/$1?ref=${TAG}" \
-    | python3 -c '
-import json, sys
-try:
-    entries = json.load(sys.stdin)
-except Exception:
-    sys.exit(0)
-if not isinstance(entries, list):
-    sys.exit(0)
-for e in entries:
-    if e.get("type") == "file" and e.get("name", "").endswith(".h"):
-        print(e["name"])
-'
-}
 for sub in intel amd; do
     while read -r h; do
         [[ -n "$h" ]] || continue
-        fetch_opt "sound/soc/sof/${sub}/${h}" "${WORK}/sof/${sub}/${h}" || true
-    done < <(list_headers "$sub")
+        ksrc_fetch_opt "sound/soc/sof/${sub}/${h}" "${WORK}/sof/${sub}/${h}" || true
+    done < <(ksrc_list_dir "sound/soc/sof/${sub}" | grep -E '\.h$' || true)
 done
 
 # sof-acpi-dev.c #includes "../../codecs/hdac_hda.h" via sound/soc/intel/.
@@ -265,7 +227,7 @@ done
 mkdir -p "${WORK}/intel/common"
 for h in soc-intel-quirks.h sof-function-topology-lib.h \
          soc-acpi-intel-sdca-quirks.h soc-acpi-intel-sdw-mockup-match.h; do
-    fetch_opt "sound/soc/intel/common/${h}" "${WORK}/intel/common/${h}" || true
+    ksrc_fetch_opt "sound/soc/intel/common/${h}" "${WORK}/intel/common/${h}" || true
 done
 
 # Apply our patch.
@@ -276,7 +238,7 @@ echo "[*] applying ${PATCH_FILE##*/}"
     # is staged at sof/ipc4-topology.c, so strip all four leading components
     # and apply inside sof/.
     if ! patch -p4 --no-backup-if-mismatch -d sof < "$PATCH_FILE"; then
-        echo "[skip] the backport does not apply to ${TAG}'s ipc4-topology.c." >&2
+        echo "[skip] the backport does not apply to ${KSRC_TAG}'s ipc4-topology.c." >&2
         echo "       That kernel's SOF tree has drifted from the one the patch" >&2
         echo "       was written against. Nothing is installed for ${KVER}." >&2
         exit 3
@@ -349,11 +311,14 @@ zstd -19 -q --force "$BUILT_KO" -o "${WORK}/${KO_NAME}"
 install -m 0644 "${WORK}/${KO_NAME}" "$KO_OVERLAY"
 depmod -a "$KVER"
 
-# Verify the overlay path is what modinfo now resolves to.
+# Verify the overlay is what modinfo now resolves to. Compare the files, not the
+# two strings: on a usr-merged system /lib is a symlink to /usr/lib, depmod
+# reports the /lib spelling, and a textual comparison then warned about a
+# correct install on every run.
 RESOLVED=$(modinfo -F filename snd_sof 2>/dev/null || true)
-if [[ "$RESOLVED" != "$KO_OVERLAY" ]]; then
+if ! [[ -e "$RESOLVED" && -e "$KO_OVERLAY" && "$RESOLVED" -ef "$KO_OVERLAY" ]]; then
     echo "[warn] modinfo resolves snd_sof to:"
-    echo "       $RESOLVED"
+    echo "       ${RESOLVED:-nothing}"
     echo "       (expected $KO_OVERLAY). depmod ordering may need investigation."
 fi
 

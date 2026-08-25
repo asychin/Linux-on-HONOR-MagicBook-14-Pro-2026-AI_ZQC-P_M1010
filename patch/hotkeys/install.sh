@@ -16,9 +16,7 @@ fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 KVER="${KVER:-$(uname -r)}"
-TAG="v${KVER%%-*}"
 SRC_REL="drivers/platform/x86/huawei-wmi.c"
-HWDB_SRC="${SCRIPT_DIR}/61-honor-keyboard.hwdb"
 HWDB_DST=/etc/udev/hwdb.d/61-honor-keyboard.hwdb
 WORK=$(mktemp -d /var/tmp/honor-hotkeys-XXXXXX)
 trap 'rm -rf "$WORK"' EXIT
@@ -34,18 +32,29 @@ die()  { printf '\033[1;31m==>\033[0m %s\n' "$*" >&2; exit 1; }
 source "${SCRIPT_DIR}/../../lib/gate.sh"
 honor_gate hotkeys
 
+# The codes and the hwdb rule were captured on one machine and belong to its
+# firmware, so they live in patch/hotkeys/<model>/<board>/ like every other
+# per-machine part.
+variant_find "$SCRIPT_DIR" || die \
+    "this fix has nothing for $(profile_get model) board ${PROFILE_BOARD:-?}.
+    Covered: $(variant_known "$SCRIPT_DIR")
+    Capture that machine's codes with patch/hotkeys/capture-keys.sh and add a
+    directory for it. See patch/hotkeys/README.md."
+HWDB_SRC="${VARIANT_DIR}/$(recipe_get hwdb)"
+[[ -f "$HWDB_SRC" ]] || die "${VARIANT_DIR}/recipe.conf names an hwdb file that is not there: $(recipe_get hwdb)"
+
 for t in curl make; do command -v "$t" >/dev/null || die "missing required tool: $t"; done
 KDIR="$(distro_module_dir "$KVER")/build"
 [[ -d "$KDIR" ]] || die "no kernel build directory at $KDIR.
     Install the headers for $KVER, or pass KVER= for a kernel that has them."
 
+log "machine = $(variant_note)"
 log "kernel  = $KVER"
-log "sources = $TAG"
 
 # --- 2. fetch the driver source matching the running kernel -------------------
-code=$(curl -sSL --max-time 60 -o "${WORK}/huawei-wmi.c" -w '%{http_code}' \
-       "https://raw.githubusercontent.com/gregkh/linux/${TAG}/${SRC_REL}")
-[[ "$code" == "200" ]] || die "could not fetch ${SRC_REL} at ${TAG} (HTTP $code)"
+ksrc_resolve
+log "sources = $KSRC_TAG"
+ksrc_fetch "$SRC_REL" "${WORK}/huawei-wmi.c"
 
 # --- 3. add the codes ---------------------------------------------------------
 # The codes below are the ones this machine was observed emitting. Anything the

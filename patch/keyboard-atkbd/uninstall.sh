@@ -11,7 +11,7 @@ source "${SCRIPT_DIR}/../../lib/uninstall.sh"
 u_log "Removing i8042.dumbkbd=1 from the kernel command line"
 if f="$(distro_cmdline_file 2>/dev/null)" && [[ -n "$f" ]]; then
     distro_cmdline_remove 'i8042\.dumbkbd=1'
-    echo "    $(grep -hE 'CMDLINE|^[^#]' "$f" | head -1)"
+    distro_cmdline_show | sed 's/^/    /'
 else
     u_warn "no kernel command line file found; remove i8042.dumbkbd=1 from your
     bootloader's command line by hand"

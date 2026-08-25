@@ -36,8 +36,9 @@ pre-build for an installed-but-not-yet-booted kernel.
 
 ### Where the offsets come from
 
-They are recorded in **one** place, `ec_fan0` and `ec_fan1` in the board section
-of the device profile, and the installer hands them to the module:
+They are recorded in **one** place, `ec_fan0` and `ec_fan1` in this fix's own
+directory for that machine, `patch/fan/<model>/<board>/recipe.conf`, and the
+installer hands them to the module:
 
 ```
 /etc/modprobe.d/honor-ec-sensors.conf
@@ -48,8 +49,10 @@ They used to live a second time in a DMI table inside the driver. That was two
 records of one fact, free to drift, and worse, the DMI entry matched on
 `DMI_PRODUCT_NAME` alone. `DMI_MATCH` is a substring test, so a module carrying
 offsets measured on `ZQC-P` board `M1010` bound just as happily to board
-`M1050`, which is a different machine with a different CPU that nobody has
-measured, and reported whatever that EC keeps at `0x2c` as a fan speed.
+`M1050`, a different machine with a different CPU, and reported whatever that
+EC keeps at `0x2c` as a fan speed. That `M1050` was later found to declare the
+same fields at the same offsets is beside the point: the driver had no way to
+know, and the next board it guesses at will not be so kind.
 
 The driver still carries a built-in default so a bare `modprobe` works on the
 one board it was measured on, and that entry now matches the board revision too.
@@ -61,8 +64,10 @@ DMI_MATCH(DMI_PRODUCT_NAME, "ZQC-P"),
 DMI_MATCH(DMI_BOARD_VERSION, "M1010"),
 ```
 
-Adding a board is therefore adding `ec_fan0` and `ec_fan1` to its section of
-`devices/`, read out of that machine's own DSDT. Nothing in the driver changes.
+Adding a board is therefore creating `patch/fan/<model>/<board>/recipe.conf`
+with `ec_fan0` and `ec_fan1` read out of that machine's own DSDT, next to the
+boards that already have one. Nothing in the driver changes and no file that
+another board also reads is touched.
 
 ## Measured behaviour
 

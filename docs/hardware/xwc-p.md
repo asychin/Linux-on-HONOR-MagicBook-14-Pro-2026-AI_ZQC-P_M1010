@@ -31,7 +31,7 @@ Other models: [index](README.md).
 | **Panel** | 16" IPS **LCD**, 3072x1920, 165 Hz, matte. Part `TL160MDMP01`, the same panel as the 2024 and 2025 MagicBook Pro 16. Not OLED, so [`patch/oled-backlight/`](../../patch/oled-backlight/) must never be listed here |
 | **Touchscreen** | **none fitted.** The SSDT does carry a FocalTech `FTSC1000` code path, but it is stock Intel reference AML gated on firmware variables, not evidence of a panel. So [`patch/micmute/`](../../patch/micmute/) does not apply |
 | **Touchpad** | Goodix, ACPI `TOPS0102` on `\_SB.PC00.I2C1` at address `0x5D`, 400 kHz, `GpioInt(Level, ActiveLow)` pin 35 on `\_SB.GPI3`. **The USB/HID vid:pid is not known** |
-| **Fingerprint** | Goodix `27c6:6f94`, on both units, in the same port position. The same reader as the reference ZQC-P, and [`patch/fingerprint/sensors/27c6-6f94-goodixmoc/`](../../patch/fingerprint/sensors/27c6-6f94-goodixmoc/) already carries the recipe |
+| **Fingerprint** | Goodix `27c6:6f94`, on both units, in the same port position. The same reader as the reference ZQC-P, and [`patch/fingerprint/zqc-p/M1010/`](../../patch/fingerprint/zqc-p/M1010/) already carries the recipe |
 | **Webcam** | two suppliers: `3277:00de` (Shinetech, as on ZQC-P) on the M1110 unit, `30c9:012c` (Luxvisions Innotech) on the M1120. Both bind `uvcvideo` unpatched |
 | **Audio** | `8086:e428`, `sof-audio-pci-intel-ptl`, PipeWire active. The **subsystem id was never captured**, and it is the one thing a headset-mic quirk needs |
 | **Battery** | 92 Wh, NVT `HB7075R5EHW-41T1` |
@@ -90,7 +90,7 @@ for byte this repository's files:
 
 ```
 27bb4879b5af49ac2b613a73cf1ffa0b   laeo patch/SSDT27_orig.aml  ==  dump/acpi/zqc-p/SSDT27_orig.aml
-0ed8b48df42f797b55714fab5aadaf42   laeo patch/SSDT27_TPD0.aml  ==  patch/acpi-override/SSDT27_TPD0.aml
+0ed8b48df42f797b55714fab5aadaf42   laeo patch/SSDT27_TPD0.aml  ==  patch/acpi-override/zqc-p/M1010/SSDT27_TPD0.aml
 ```
 
 Given that the two machines share the table, shipping ours is not wrong, and
@@ -145,7 +145,7 @@ exactly the three pairs the ZQC-P EC arms. The second unit reads 0/0.
 
 laeo's `battery-limit.sh` defaults to writing `75 80`, which is one of the pairs
 this repository has shown the EC stores and ignores. The profile leaves
-`battery_charge_presets=unknown` because a `sysfs` readback shows what was
+No `presets` are recorded for it, because a `sysfs` readback shows what was
 written, not what the EC armed — that distinction is the entire reason
 [`patch/battery/`](../../patch/battery/) exists. Settling it takes two commands,
 in [TESTING.md](../TESTING.md#4-the-battery-limit).
@@ -160,8 +160,7 @@ why it does on some ZQC-P units.
 
 ## Not established
 
-`touchpad_hid`, `audio_ssid`, `backlight_max`, `ec_fan0`, `ec_fan1`,
-`battery_charge_presets`. Both `inxi` dumps read `Fan Speeds (rpm): N/A`, and
+`touchpad_hid`, `audio_ssid`, `backlight_max`, and anything the tier B fixes would need. Both `inxi` dumps read `Fan Speeds (rpm): N/A`, and
 only the `I2C_DEVT` SSDT was ever published for this machine — it contains no
 EC region, so the tachometer offsets cannot be recovered from it.
 
