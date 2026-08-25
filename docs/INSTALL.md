@@ -21,7 +21,7 @@ affected.
 | 4 | Appends `i8042.dumbkbd=1` to the kernel command line, wherever this distribution keeps it: `/etc/default/limine`, `/etc/default/grub` or `/etc/kernel/cmdline`. On Linux 7.2 and 7.1.10 the upstream `atkbd` quirk makes it unnecessary, and the step says so |
 | 5 | Runs `patch/psr-band/install.sh` — puts `xe.enable_psr=1` on the cmdline so Panel Self Refresh stops at PSR1, and applies it to the running session too |
 | 6 | Runs `patch/oled-backlight/install.sh` — patched VBT, `FILES=` entry and `xe.vbt_firmware=` on the cmdline |
-| 7 | Rebuilds `xe.ko` into the `updates/` overlay through `lib/xe-build.sh`, carrying every patch that lives inside that module: the Panther Lake cdclk fix (`WITH_CDCLK=1`, `patch/cdclk-ptl/install.sh`) and the eDP DSC preference (`WITH_DSC=1`, `patch/edp-dsc/install.sh`). Skipped entirely when neither is asked for |
+| 7 | Rebuilds `xe.ko` into the `updates/` overlay through `lib/xe-build.sh`, carrying every patch that lives inside that module: the Panther Lake cdclk fix (`patch/cdclk-ptl/install.sh`, `SKIP_CDCLK=1` to leave it out) and the eDP DSC preference (`patch/edp-dsc/install.sh`, `SKIP_DSC=1` to leave it out). Runs where the profile lists them |
 | 8 | Regenerates the initramfs and the bootloader config, once, after all the config edits |
 | 9 | Runs `patch/headset-mic/install.sh` — rebuilds `snd-hda-codec-alc269.ko` with the ALC256 quirk for PCI SSID `1ee7:209d` |
 | 10 | Runs `patch/sof-audio/install.sh` — builds `snd-sof.ko` with the IPC4 backport into the `updates/` overlay |

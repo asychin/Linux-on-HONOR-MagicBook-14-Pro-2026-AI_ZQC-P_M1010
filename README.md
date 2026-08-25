@@ -32,8 +32,8 @@ recognise it. `uninstall_patch.sh` reverts everything.
 | OLED minimum brightness too low, uneven steps | works | [`patch/oled-backlight/`](patch/oled-backlight/) — patched VBT raises the firmware's backlight floor |
 | Faint wide band follows the mouse pointer | works | [`patch/psr-band/`](patch/psr-band/) — PSR2 selective update can only refresh whole scanlines, so every partial update is a full-width band; limits PSR to PSR1, which has none |
 | Touchpad left-edge slide (brightness gesture) | works | [`patch/touchpad-edge/`](patch/touchpad-edge/) — HID-BPF turns the vendor gesture report into brightness keys. The right edge (volume) goes through the EC and works unaided |
-| Screen garbled at boot, kernel 7.1.6 and newer | works, opt-in | [`patch/cdclk-ptl/`](patch/cdclk-ptl/) — rebuilds `xe.ko` with the upstream CDCLK fix Panther Lake needs. Merged to `drm-intel-next` on 2026-08-21, so expect it in Linux 7.3 and then a stable backport |
-| Panel driven at 6 bits per colour, banding on gradients | works, opt-in | [`patch/edp-dsc/`](patch/edp-dsc/) — the link cannot carry 8 bpc and the driver drops colour depth before it will compress; a kernel patch makes it prefer DSC on eDP, with a fallback to the old behaviour |
+| Screen garbled at boot, kernel 7.1.6 and newer | works | [`patch/cdclk-ptl/`](patch/cdclk-ptl/) — rebuilds `xe.ko` with the upstream CDCLK fix Panther Lake needs. Merged to `drm-intel-next` on 2026-08-21, so expect it in Linux 7.3 and then a stable backport |
+| Panel driven at 6 bits per colour, banding on gradients | works | [`patch/edp-dsc/`](patch/edp-dsc/) — the link cannot carry 8 bpc and the driver drops colour depth before it will compress; a kernel patch makes it prefer DSC on eDP, with a fallback to the old behaviour |
 | Battery charge limit does nothing | works | [`patch/battery/`](patch/battery/) — the EC only enforces HONOR's own preset pairs; anything else, including what the desktop sets, is stored and ignored |
 | Performance and camera keys do nothing | works | [`patch/hotkey-actions/`](patch/hotkey-actions/) — a small service acts on the keys the desktop ignores |
 | Some Fn keys dead, `Unknown key pressed` in dmesg | works | [`patch/hotkeys/`](patch/hotkeys/) — adds the HONOR codes to the `huawei-wmi` keymap |
@@ -146,8 +146,8 @@ plainly when that is not one the profile describes.
 | `SKIP_FAN=1` | no fan RPM readout |
 | `SKIP_FINGERPRINT=1` | no `libfprint` rebuild, by far the slowest step |
 | `VBT_MIN=<n>` | backlight floor in n/255, default 12. Measure yours first with `patch/oled-backlight/measure-floor.sh` |
-| `WITH_CDCLK=1` | rebuild `xe.ko` with the Panther Lake cdclk fix. Off by default: it downloads the distro kernel source, about 260 MB, and compiles for a few minutes |
-| `WITH_DSC=1` | rebuild `xe.ko` so the driver prefers DSC over dropping the panel to 6 bits per colour. Off by default for the same reason. Both `WITH_*` together build the module once |
+| `SKIP_CDCLK=1` | leave the Panther Lake cdclk fix out of the `xe.ko` rebuild |
+| `SKIP_DSC=1` | leave the DSC preference out of it. Both run where the profile lists them; the build downloads the distro kernel source, about 260 MB, and compiles for a few minutes, and the two together build the module once |
 | `CHARGE_PRESET="40 70"` | which battery charge preset to arm. Only the pairs the EC enforces work, see [`patch/battery/README.md`](patch/battery/README.md) |
 | `FORCE_ACPI=1` | install the ACPI override even though your machine's `I2C_DEVT` table is not the one it was built from. That mismatch means a BIOS update rewrote it or this is a different machine; read [docs/RESEARCH.md](docs/RESEARCH.md) first |
 | `ALLOW_UNVERIFIED=1` | run on a board whose profile section is not `verified`, restricted to the fixes that derive their own inputs |

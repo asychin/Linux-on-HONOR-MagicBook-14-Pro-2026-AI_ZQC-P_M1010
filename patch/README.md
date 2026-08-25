@@ -71,8 +71,8 @@ on several of them the honest answer is that nothing here applies at all. See
 | OLED minimum brightness too low, uneven steps | works | [`oled-backlight/`](oled-backlight/) — patched VBT raises the firmware's backlight floor |
 | Faint wide band follows the mouse pointer | works | [`psr-band/`](psr-band/) — PSR2 selective update can only refresh whole scanlines, so every partial update is a full-width band; limits PSR to PSR1, which has none |
 | Touchpad left-edge slide does nothing | works | [`touchpad-edge/`](touchpad-edge/) — HID-BPF turns the vendor gesture report into brightness keys |
-| Garbled screen at boot on 7.1.6+ | works, opt-in | [`cdclk-ptl/`](cdclk-ptl/) — rebuilds `xe.ko` with the upstream CDCLK fix for Panther Lake. Merged to `drm-intel-next` 2026-08-21, so expect it in 7.3 |
-| Panel driven at 6 bits per colour, banding on gradients | works, opt-in | [`edp-dsc/`](edp-dsc/) — the link cannot carry 8 bpc and the driver drops colour depth before it will compress; a kernel patch makes it prefer DSC on eDP, with a fallback to the old behaviour |
+| Garbled screen at boot on 7.1.6+ | works | [`cdclk-ptl/`](cdclk-ptl/) — rebuilds `xe.ko` with the upstream CDCLK fix for Panther Lake. Merged to `drm-intel-next` 2026-08-21, so expect it in 7.3 |
+| Panel driven at 6 bits per colour, banding on gradients | works | [`edp-dsc/`](edp-dsc/) — the link cannot carry 8 bpc and the driver drops colour depth before it will compress; a kernel patch makes it prefer DSC on eDP, with a fallback to the old behaviour |
 | Battery charge limit ignored | works | [`battery/`](battery/) — the EC arms only for HONOR's preset pairs; everything else is stored and silently dropped |
 | Performance and camera keys inert | works | [`hotkey-actions/`](hotkey-actions/) — acts on the keys no desktop binds |
 | Fn keys dead, `Unknown key pressed` | works | [`hotkeys/`](hotkeys/) — HONOR codes added to the `huawei-wmi` keymap |
@@ -89,10 +89,9 @@ intended entry point for a fresh install. `uninstall_patch.sh` reverts it.
 Every step after the ACPI override is independent and only warns on failure.
 
 Optional steps: `SKIP_OLED=1`, `SKIP_EDGE=1`, `SKIP_FAN=1`,
-`SKIP_FINGERPRINT=1`. One step is off by default and has to be asked for:
-`WITH_CDCLK=1` rebuilds `xe.ko` with the Panther Lake cdclk fix, which
-means downloading the distro kernel source and compiling for a few
-minutes. The backlight floor defaults to `VBT_MIN=12`, measured on
+`SKIP_FINGERPRINT=1`, and `SKIP_CDCLK=1` / `SKIP_DSC=1` for the two that
+rebuild `xe.ko`, which means downloading the distro kernel source and compiling
+for a few minutes. The backlight floor defaults to `VBT_MIN=12`, measured on
 two units; run [`oled-backlight/measure-floor.sh`](oled-backlight/measure-floor.sh)
 if you want to check it against your own panel.
 

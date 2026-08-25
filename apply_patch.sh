@@ -10,9 +10,9 @@
 #   SKIP_EDGE=1          leave the touchpad left-edge gesture dead
 #   SKIP_FAN=1           no fan RPM readout
 #   SKIP_FINGERPRINT=1   no libfprint rebuild (by far the slowest step)
-#   WITH_CDCLK=1         rebuild xe.ko with the Panther Lake cdclk fix;
-#                        off by default, it downloads the kernel source
-#                        and compiles for a few minutes
+#   SKIP_CDCLK=1         no Panther Lake cdclk fix. On by default where the
+#   SKIP_DSC=1           profile lists it; both rebuild xe.ko, which downloads
+#                        the kernel source and compiles for a few minutes
 #   VBT_MIN=<n>          backlight floor in n/255, default 12; measure yours
 #                        with patch/oled-backlight/measure-floor.sh first
 #
@@ -81,7 +81,7 @@
 #      restart while the panel is lit. Upstream commit 2ee8dbd880b1,
 #      stable backport 1e9b961f9f45. The four-line upstream fix is not
 #      merged anywhere yet, so step [7/18] rebuilds xe.ko with it.
-#      OPT-IN, off unless WITH_CDCLK=1. See patch/cdclk-ptl/.
+#      SKIP_CDCLK=1 leaves it alone. See patch/cdclk-ptl/.
 #   9) The internal panel is driven at 6 bits per colour with dithering.
 #      Its link tops out at HBR2, which cannot carry 8 bpc at 3120x2080
 #      120 Hz, and the driver is allowed to drop colour depth to make a
@@ -90,7 +90,7 @@
 #      link less than half loaded. Step [7/18] builds the same xe.ko with
 #      a patch that prefers compression over going below 8 bpc on eDP,
 #      falling back to the old behaviour if DSC does not compute.
-#      OPT-IN, off unless WITH_DSC=1. See patch/edp-dsc/.
+#      SKIP_DSC=1 leaves it alone. See patch/edp-dsc/.
 #  10) Sliding along the left edge of the touchpad is a HONOR brightness
 #      gesture that goes nowhere under Linux: it is reported on a vendor
 #      HID collection that hid-input discards. Step [12/18] installs a
@@ -617,35 +617,54 @@ fi
 # corrupted image during boot. The upstream fix is merged to drm-intel-next
 # and due in Linux 7.3, so on any kernel you can install today the module
 # still has to be rebuilt locally.
-# OPT-IN: this one downloads the distro kernel source (about 260 MB) and
-# compiles for several minutes, and it becomes obsolete the moment the fix
-# reaches your kernel. Enable it with WITH_CDCLK=1.
+# This step used to be off unless WITH_CDCLK=1 or WITH_DSC=1 was passed, on the
+# grounds that it downloads the distro kernel source (about 260 MB) and compiles
+# for several minutes. That made the cost of the build, not the state of the
+# machine, decide whether a defect got fixed: a board could list cdclk-ptl,
+# print "skipped" on every run, and its owner be left looking at the corruption
+# it fixes. What a board needs is the profile's business, so listing the fix is
+# now what turns it on, like every other fix here. SKIP_CDCLK=1 and SKIP_DSC=1
+# are there for when the download is the problem.
+#
 # It installs into modules updates/ and runs before the single initramfs
 # rebuild in [8/18], because the early-KMS copy of xe.ko is the one that
 # lights the panel.
 #────────────────────────────────────────────────────────────────────────
 echo "[7/18] Rebuild xe.ko with the patches that live inside it"
 
-# One module, two patches, so one build. XE_SKIP keeps the two opt-ins
-# separate: asking for the cdclk fix is not asking for the DSC preference.
+# One module, two patches, so one build. XE_SKIP keeps them separate: skipping
+# the DSC preference is not skipping the cdclk fix.
+# fix_enabled is called for its output as much as its answer: it is what says
+# "not listed for this board" or "tier B, needs a verified profile". Do not
+# silence it, or a board that gets nothing here is told nothing either.
+want_cdclk=0
+if fix_enabled cdclk-ptl; then
+    if [[ "${SKIP_CDCLK:-0}" == "1" ]]; then
+        echo "    cdclk-ptl skipped — SKIP_CDCLK=1"
+    else
+        want_cdclk=1
+    fi
+fi
+want_dsc=0
+if fix_enabled edp-dsc; then
+    if [[ "${SKIP_DSC:-0}" == "1" ]]; then
+        echo "    edp-dsc skipped — SKIP_DSC=1"
+    else
+        want_dsc=1
+    fi
+fi
+
 XE_SKIP=""
-[[ "${WITH_CDCLK:-0}" == "1" ]] || XE_SKIP="$XE_SKIP cdclk-ptl"
-[[ "${WITH_DSC:-0}"   == "1" ]] || XE_SKIP="$XE_SKIP edp-dsc"
+(( want_cdclk )) || XE_SKIP="$XE_SKIP cdclk-ptl"
+(( want_dsc ))   || XE_SKIP="$XE_SKIP edp-dsc"
 export XE_SKIP="${XE_SKIP# }"
 
-if [[ "${WITH_CDCLK:-0}" != "1" && "${WITH_DSC:-0}" != "1" ]]; then
-    echo "    skipped — both are opt-in because the build downloads the distro"
-    echo "    kernel source (about 260 MB) and compiles for several minutes."
-    echo "      WITH_CDCLK=1  boot-time screen corruption, patch/cdclk-ptl/"
-    echo "      WITH_DSC=1    panel driven at 6 bpc, patch/edp-dsc/"
-elif ! fix_enabled cdclk-ptl && ! fix_enabled edp-dsc; then
+if (( ! want_cdclk && ! want_dsc )); then
     :
 # Either installer builds the same module and both are safe to call; the
 # second one finds the work already done and says so.
-elif { [[ "${WITH_CDCLK:-0}" == "1" ]] && fix_enabled cdclk-ptl \
-         && REGEN=0 bash "$PATCH_DIR/cdclk-ptl/install.sh"; } \
-     || { [[ "${WITH_DSC:-0}" == "1" ]] && fix_enabled edp-dsc \
-         && REGEN=0 bash "$PATCH_DIR/edp-dsc/install.sh"; }; then
+elif { (( want_cdclk )) && REGEN=0 bash "$PATCH_DIR/cdclk-ptl/install.sh"; } \
+     || { (( want_dsc )) && REGEN=0 bash "$PATCH_DIR/edp-dsc/install.sh"; }; then
     echo "    OK"
 else
     step_warn "the xe.ko rebuild failed — everything else still applies."

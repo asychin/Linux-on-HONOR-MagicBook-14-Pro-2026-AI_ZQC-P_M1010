@@ -164,9 +164,10 @@ sudo bash patch/edp-dsc/install.sh
 sudo reboot
 ```
 
-or through `apply_patch.sh` with `WITH_DSC=1`. It is opt-in for the same reason
-[`cdclk-ptl`](../cdclk-ptl/) is: the build downloads the distribution's kernel
-source, about 260 MB, and compiles for a few minutes.
+or through `apply_patch.sh`, which runs it where the profile lists it.
+`SKIP_DSC=1` leaves it out, for the same reason `SKIP_CDCLK=1` exists: the
+build downloads the distribution's kernel source, about 260 MB, and compiles
+for a few minutes.
 
 Both patches live inside the same `xe.ko`, so the build itself is in
 [`lib/xe-build.sh`](../../lib/xe-build.sh) and always carries every patch that

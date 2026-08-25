@@ -311,8 +311,8 @@ worked through in the fix's README.
 
 The panel does support DSC and the firmware does not object. Why the driver
 never asks, and the patch that makes it, are in
-[`patch/edp-dsc/README.md`](../../patch/edp-dsc/README.md); it is opt-in
-because it rebuilds `xe.ko`. Measured on this unit before and after, at the
+[`patch/edp-dsc/README.md`](../../patch/edp-dsc/README.md); it rebuilds
+`xe.ko`, so `SKIP_DSC=1` is there if the build is unwelcome. Measured on this unit before and after, at the
 120 Hz mode in use:
 
 | | stock | with the fix |
@@ -611,8 +611,8 @@ so those fixes have never actually installed on this machine.
 | `acpi-override` | ran; the log shows it recognising the patched table as already active, and the md5 check settles it at run time regardless |
 | `psr-band` | ran; this board's own eDP reports `PSR mode: PSR1 enabled` afterwards |
 | `oled-backlight` | ran; patched this machine's own factory VBT from 6/255 to 12/255 and installed the blob. Nobody has stepped through `measure-floor.sh` on this panel, so 12 is inherited rather than measured, on a panel proven byte-identical |
-| `cdclk-ptl` | opt-in, so it was skipped in the log. The defect it fixes is [issue 9](https://github.com/rs0x29a/Linux-on-HONOR-MagicBook-14-Pro-2026-AI_ZQC-P_M1010/issues/9), which is this owner's |
-| `edp-dsc` | opt-in, skipped. The 6 bpc arithmetic is confirmed from this board's own eDP debugfs |
+| `cdclk-ptl` | was opt-in at the time, so the log skipped it. The defect it fixes is [issue 9](https://github.com/rs0x29a/Linux-on-HONOR-MagicBook-14-Pro-2026-AI_ZQC-P_M1010/issues/9), which is this owner's |
+| `edp-dsc` | was opt-in at the time, so the log skipped it. The 6 bpc arithmetic is confirmed from this board's own eDP debugfs |
 | `headset-mic` | **never installed here**: the fetch 404ed. Same ALC256, same `1ee7:209d`, same empty `inputs:` in this machine's own codec autoconfig, and the installer re-checks the subsystem id at run time |
 | `sof-audio` | **never installed here**: the fetch 404ed. It carries nothing measured on any machine; it is a backport against the running kernel |
 | `micmute` | worked here in an earlier release, and its owner is the one who noticed when it regressed. Failed in this log for the same 404 |
