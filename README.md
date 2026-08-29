@@ -189,6 +189,7 @@ out. [`patch/README.md`](patch/README.md) is the index.
 | [docs/TESTING.md](docs/TESTING.md) | what to try and what to report, if you have a model nobody here owns |
 | [docs/SUPPORT.md](docs/SUPPORT.md) | what "supported" means here, and where to take a question |
 | [docs/LIMITATIONS.md](docs/LIMITATIONS.md) | what does not work and why, including the fan behaviour |
+| [docs/NPU.md](docs/NPU.md) | the neural accelerator: it works out of the box, what it is worth, and why `sensors` cannot see it |
 | [docs/ADDING-A-MODEL.md](docs/ADDING-A-MODEL.md) | dump → profile → verified, step by step |
 | [docs/RESEARCH.md](docs/RESEARCH.md) | how the ACPI override was derived, and how to redo it elsewhere |
 | [docs/WINDOWS-DUMP.md](docs/WINDOWS-DUMP.md) | making the Windows-side dump that answers "why does it work there" |
