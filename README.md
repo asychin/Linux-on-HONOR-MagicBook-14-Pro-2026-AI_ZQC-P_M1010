@@ -8,7 +8,7 @@ limit, and the Fn keys.
 Built on a **MagicBook Pro 14 2026 (`ZQC-P`, board M1010)**. Further board
 revisions are recognised separately and enable only the fixes supported by
 evidence from that exact revision. `ZQC-P` M1020 was verified independently on
-BIOS 1.09 with a smaller safe subset. See [Models](#models) and
+BIOS 1.10 with CachyOS and a board-specific safe subset. See [Models](#models) and
 [docs/hardware/](docs/hardware/).
 
 ```sh
@@ -56,7 +56,7 @@ the codec is on HDA and unaffected. See
 
 Trust is per **board revision**, not per model. HONOR ships one product code as
 several machines: `ZQC-P` is board `M1010` here, board `M1020` on the BIOS
-1.09 unit documented in this branch, and board `M1050` elsewhere with a
+1.10 unit documented in this branch, and board `M1050` elsewhere with a
 different CPU; `FMB-P` is five revisions across three SKUs. So a profile
 has one section per revision, each with its own status, and a revision nobody
 has measured never inherits another one's.
@@ -73,7 +73,7 @@ and with the value it is missing rather than silently:
 | Board | Fixes |
 |---|---|
 | `ZQC-P` `M1010` | **acpi-override** · **psr-band** · **oled-backlight** · **cdclk-ptl** · **edp-dsc** · **headset-mic** · **sof-audio** · **micmute** · **touchpad-edge** · **fan** · **fingerprint** · **battery** · **hotkeys** · **hotkey-actions** · **auto-rebuild** |
-| `ZQC-P` `M1020` | **acpi-override** · **micmute** · **touchpad-edge** · **fan** · **hotkeys** · **hotkey-actions** |
+| `ZQC-P` `M1020` | **acpi-override** · **cdclk-ptl** · **micmute** · **touchpad-edge** · **fan** · **fingerprint** · **hotkeys** · **hotkey-actions** · **auto-rebuild** |
 | `ZQC-P` `M1050` | **acpi-override** · **psr-band** · **oled-backlight** · **cdclk-ptl** · **edp-dsc** · **headset-mic** · **sof-audio** · **micmute** · **touchpad-edge** · **fan** · **fingerprint** · **battery** · **hotkeys** · **hotkey-actions** · **auto-rebuild** |
 
 A board below `verified` gets only the tier A subset, and `apply_patch.sh`
@@ -135,8 +135,8 @@ machine's constants. What each status word means and what it allows:
 [`docs/hardware/README.md`](docs/hardware/README.md#what-the-status-words-mean).
 
 Three board sections are `verified`: `ZQC-P` `M1010`, the machine this was
-built on; `ZQC-P` `M1020`, with a smaller subset physically verified on BIOS
-1.09; and `ZQC-P` `M1050`, on the strength of a dump, an ACPI set and an install
+built on; `ZQC-P` `M1020`, with a board-specific subset physically verified on
+BIOS 1.10 and CachyOS; and `ZQC-P` `M1050`, on the strength of a dump, an ACPI set and an install
 log from that machine. Detection reports which board it decided on, and says so
 plainly when that is not one the profile describes.
 

@@ -5,7 +5,7 @@
 | Product code | `ZQC-P`, board versions `M1010`, `M1020`, `M1050`, board `ZQC-P-PCB` |
 | Platform | Intel Panther Lake, Core Ultra X9 388H or Core Ultra 5 338H |
 | Profile | [`devices/zqc-p.conf`](../../devices/zqc-p.conf) — three verified sections: `[board M1010]` measured here, [`[board M1020]`](#the-m1020-revision) with a smaller tested subset, and [`[board M1050]`](#the-m1050-revision) from its owner |
-| Verified on | M1010: BIOS 1.10, CachyOS, kernel 7.1.8; M1020: BIOS 1.09, Kubuntu 26.04, kernel 7.0.0-30 |
+| Verified on | M1010: BIOS 1.10, CachyOS, kernel 7.1.8; M1020: BIOS 1.10, CachyOS, kernel 7.2.2 |
 
 This is the machine the repository was built on: every value in the `[board
 M1010]` section of its profile was read off this unit and every fix was run on
@@ -511,15 +511,16 @@ for HONOR will find it and wonder.
 
 ## The M1020 revision
 
-A BIOS 1.09 global unit reports the same product and board names as M1010 but a
-different board revision and SKU:
+A global unit reports the same product and board names as M1010 but a different
+board revision and SKU. It was first measured on BIOS 1.09 with Kubuntu, then
+verified again after the BIOS 1.10 update and clean CachyOS installation:
 
 | | `M1020` measurement |
 |---|---|
 | DMI | `HONOR / ZQC-P / ZQC-P-PCB`, board `M1020`, SKU `C170` |
 | CPU / GPU | Core Ultra X9 388H / Arc B390 `8086:b080`, `xe` |
-| BIOS tested | 1.09, 2026-03-19 |
-| OS tested | Kubuntu 26.04.1, kernel `7.0.0-30-generic` |
+| BIOS tested | 1.10, 2026-06-03 |
+| OS tested | CachyOS, `linux-cachyos 7.2.2-1` with `linux-cachyos-lts 6.18.48-1` retained as fallback |
 | Touchscreen | FocalTech `2808:5662` |
 | Touchpad | Goodix `27c6:0f9a` |
 | Fingerprint | Goodix `27c6:6f94` |
@@ -527,11 +528,11 @@ different board revision and SKU:
 | Audio | ALC256, subsystem `1ee7:209d` |
 | Battery | NVT `HB7075R5EHW-41T1` |
 | SSD in the unit seen | KIOXIA `KBG60ZNV1T02` |
-| Status | verified, for the smaller subset in the profile |
+| Status | verified for the board-specific subset in the profile |
 
-The stock live `I2C_DEVT` table was 23,708 bytes with MD5
-`27bb4879b5af49ac2b613a73cf1ffa0b`, exactly the table the M1010 override was
-built from. The installer accepted it through the table hash gate rather than
+The stock live `I2C_DEVT` table remained 23,708 bytes with MD5
+`27bb4879b5af49ac2b613a73cf1ffa0b` after the BIOS 1.10 update, exactly the
+table the M1010 override was built from. The installer accepted it through the table hash gate rather than
 through the board name. After reboot the kernel logged:
 
 ```text
@@ -560,28 +561,33 @@ touchpad-off, and the companion atkbd `f8` scancode. The patched `huawei-wmi`
 and board-specific hwdb removed the unknown-key reports. The action service
 was pointed at this unit's actual `30c9:012c` camera; F8 deauthorised and
 reauthorised only that USB device. Native Plasma OSD was added for both camera
-states.
+states, with `POWER_PROFILE_KEY=0` retained.
+
+Stock `linux-cachyos 7.2.2-1` produced a garbled display during boot and logged
+`*ERROR* CPU pipe A FIFO underrun`. Rebuilding only `xe.ko` from the exact
+CachyOS release tree with `cdclk-ptl` removed the underrun and the machine then
+booted cleanly. The LTS kernel remains an unmodified fallback.
+
+The Goodix `27c6:6f94` reader reported no devices with stock libfprint
+`1.94.100-1.1`. A pacman-owned `1.94.100-1.2` package carrying the two-line
+Goodix MOC ID patch enrolled `right-index-finger`, returned `verify-match`, and
+authenticated `sudo`. Password authentication remains as fallback.
 
 The following results are deliberately not promoted into the M1020 fix list:
 
-- **Battery:** writing `70 90` through `huawei-wmi` updated EC start/stop bytes
-  but left charge mode `0`; the limiter was not armed. The setting was restored
-  to `0 100`, and no battery service was installed.
-- **Fingerprint:** a local Ubuntu `libfprint 1.95.1+tod1` build with Goodix
-  `27c6:6f94` added enrolled and verified a finger and authenticated `sudo`.
-  That distro-specific build is recorded in `AGENT.md`; no M1020 recipe is
-  enabled until the patch is integrated and tested on the target distro.
+- **Battery:** on BIOS 1.10, writing `70 90` through `huawei-wmi` still left EC
+  charge mode `0`; the limiter was not armed. The setting was restored to
+  `0 100`, and no battery service was installed.
 - **Headset microphone:** an out-of-tree `snd-hda-codec-alc269` built from
   vanilla v7.0 source crashed Ubuntu's backported HDA stack in
   `try_assign_dacs()` during boot. The overlay and temporary M1020 recipe were
   removed. Matching codec IDs are not enough to make that mixed-source module
   safe.
-- **Display patches:** no PSR band or low-brightness OLED defect was reported,
-  and the kernel was older than the cdclk regression's affected range. No M1010
-  display fix was inherited.
+- **Other display patches:** no PSR band or low-brightness OLED defect was
+  reported, so `psr-band`, `oled-backlight` and `edp-dsc` remain disabled.
 
-The M1020 evidence and migration notes, including the fingerprint build and the
-kernel Oops trace, are preserved in the repository-root `AGENT.md`.
+The verified CachyOS results and the earlier Kubuntu kernel Oops are preserved
+in this M1020 section.
 
 ## The M1050 revision
 
