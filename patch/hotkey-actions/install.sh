@@ -81,7 +81,9 @@ EOF
 chmod 0644 "$CONF"
 
 systemctl daemon-reload
-systemctl enable --now honor-hotkey-actions.service >/dev/null 2>&1 \
+systemctl enable honor-hotkey-actions.service >/dev/null 2>&1 \
+    || die "could not enable honor-hotkey-actions.service"
+systemctl restart honor-hotkey-actions.service \
     || die "could not start honor-hotkey-actions.service; see journalctl -u honor-hotkey-actions"
 sleep 1
 systemctl is-active --quiet honor-hotkey-actions.service \

@@ -2,10 +2,10 @@
 
 | | |
 |---|---|
-| Product code | `ZQC-P`, board version `M1010`, board `ZQC-P-PCB` |
-| Platform | Intel Panther Lake, Core Ultra X9 388H |
-| Profile | [`devices/zqc-p.conf`](../../devices/zqc-p.conf) — both sections **verified**, `[board M1010]` measured here and [`[board M1050]`](#the-m1050-revision) from its owner |
-| Verified on | BIOS 1.10, CachyOS, kernel 7.1.8 |
+| Product code | `ZQC-P`, board versions `M1010`, `M1020`, `M1050`, board `ZQC-P-PCB` |
+| Platform | Intel Panther Lake, Core Ultra X9 388H or Core Ultra 5 338H |
+| Profile | [`devices/zqc-p.conf`](../../devices/zqc-p.conf) — three verified sections: `[board M1010]` measured here, [`[board M1020]`](#the-m1020-revision) with a smaller tested subset, and [`[board M1050]`](#the-m1050-revision) from its owner |
+| Verified on | M1010: BIOS 1.10, CachyOS, kernel 7.1.8; M1020: BIOS 1.09, Kubuntu 26.04, kernel 7.0.0-30 |
 
 This is the machine the repository was built on: every value in the `[board
 M1010]` section of its profile was read off this unit and every fix was run on
@@ -13,7 +13,8 @@ it. Where a statement below is not a measurement taken here, it says whose it
 is.
 
 **`ZQC-P` is more than one machine.** Everything on this page is board `M1010`
-unless it says otherwise; see [the M1050 revision](#the-m1050-revision).
+unless it says otherwise; see [the M1020 revision](#the-m1020-revision) and
+[the M1050 revision](#the-m1050-revision).
 
 Other models: [index](README.md).
 
@@ -508,6 +509,80 @@ it describes a clickpad that wrongly announces `BTN_RIGHT` — and nobody has
 reported that symptom here. Recorded because the next person to grep libinput
 for HONOR will find it and wonder.
 
+## The M1020 revision
+
+A BIOS 1.09 global unit reports the same product and board names as M1010 but a
+different board revision and SKU:
+
+| | `M1020` measurement |
+|---|---|
+| DMI | `HONOR / ZQC-P / ZQC-P-PCB`, board `M1020`, SKU `C170` |
+| CPU / GPU | Core Ultra X9 388H / Arc B390 `8086:b080`, `xe` |
+| BIOS tested | 1.09, 2026-03-19 |
+| OS tested | Kubuntu 26.04.1, kernel `7.0.0-30-generic` |
+| Touchscreen | FocalTech `2808:5662` |
+| Touchpad | Goodix `27c6:0f9a` |
+| Fingerprint | Goodix `27c6:6f94` |
+| Webcam | Luxvisions `30c9:012c`, unlike M1010/M1050 `3277:00de` |
+| Audio | ALC256, subsystem `1ee7:209d` |
+| Battery | NVT `HB7075R5EHW-41T1` |
+| SSD in the unit seen | KIOXIA `KBG60ZNV1T02` |
+| Status | verified, for the smaller subset in the profile |
+
+The stock live `I2C_DEVT` table was 23,708 bytes with MD5
+`27bb4879b5af49ac2b613a73cf1ffa0b`, exactly the table the M1010 override was
+built from. The installer accepted it through the table hash gate rather than
+through the board name. After reboot the kernel logged:
+
+```text
+ACPI: Table Upgrade: override [SSDT- HONOR-I2C_DEVT]
+```
+
+`TOPS0102:00` and `FTSC1000:00` appeared, and the internal keyboard, touchpad
+and touchscreen worked. This is the evidence behind the M1020
+`acpi-override` recipe; after a BIOS update the live table must be hashed again
+before reusing it.
+
+The 243,659-byte DSDT had SHA-256
+`a73e83433f2500702d7da50947a49267fccd5d1de0cab86cd87c4232da7bc075`, byte
+for byte the same as the M1010 DSDT in this repository. In particular it places
+`FA0L/FA0R` at EC offsets `0x2c/0x2d` and `FA1L/FA1R` at `0x2e/0x2f`. The
+read-only fan module was installed with those offsets and reported two
+plausible RPM values, approximately 2300 and 2000 during the check.
+
+The two HID-BPF fixes were also physically verified. Removing the FTSC1000
+vendor collection eliminated the phantom `KEY_MICMUTE` input without affecting
+touch, and the TOPS0102 program made the left-edge brightness gesture work.
+The right-edge volume gesture remained unchanged.
+
+A hotkey capture recorded WMI `0x288` for the camera toggle, `0x2a3` for
+touchpad-off, and the companion atkbd `f8` scancode. The patched `huawei-wmi`
+and board-specific hwdb removed the unknown-key reports. The action service
+was pointed at this unit's actual `30c9:012c` camera; F8 deauthorised and
+reauthorised only that USB device. Native Plasma OSD was added for both camera
+states.
+
+The following results are deliberately not promoted into the M1020 fix list:
+
+- **Battery:** writing `70 90` through `huawei-wmi` updated EC start/stop bytes
+  but left charge mode `0`; the limiter was not armed. The setting was restored
+  to `0 100`, and no battery service was installed.
+- **Fingerprint:** a local Ubuntu `libfprint 1.95.1+tod1` build with Goodix
+  `27c6:6f94` added enrolled and verified a finger and authenticated `sudo`.
+  That distro-specific build is recorded in `AGENT.md`; no M1020 recipe is
+  enabled until the patch is integrated and tested on the target distro.
+- **Headset microphone:** an out-of-tree `snd-hda-codec-alc269` built from
+  vanilla v7.0 source crashed Ubuntu's backported HDA stack in
+  `try_assign_dacs()` during boot. The overlay and temporary M1020 recipe were
+  removed. Matching codec IDs are not enough to make that mixed-source module
+  safe.
+- **Display patches:** no PSR band or low-brightness OLED defect was reported,
+  and the kernel was older than the cdclk regression's affected range. No M1010
+  display fix was inherited.
+
+The M1020 evidence and migration notes, including the fingerprint build and the
+kernel Oops trace, are preserved in the repository-root `AGENT.md`.
+
 ## The M1050 revision
 
 `ZQC-P` is not one machine. A second board revision reports the same
@@ -530,7 +605,7 @@ measurement rather than an inference.
 | Fingerprint | Goodix `27c6:6f94` | LighTuning EgisTec `1c7a:05aa` |
 | Webcam | Shinetech `3277:00de` | the same |
 | SSD in the unit seen | YMTC PC411 `1e49:1071` | KIOXIA BG6 `1e0f:001a` |
-| Status | verified | reported |
+| Status | verified | verified |
 
 Sources, all from @pilgrim1990:
 [issue 1](https://github.com/rs0x29a/Linux-on-HONOR-MagicBook-14-Pro-2026-AI_ZQC-P_M1010/issues/1)

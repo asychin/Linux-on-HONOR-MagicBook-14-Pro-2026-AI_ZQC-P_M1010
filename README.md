@@ -5,11 +5,11 @@ table for the touchpad and touchscreen, kernel-module quirks for audio and
 sensors, HID-BPF programs for the touchpad gestures, a working battery charge
 limit, and the Fn keys.
 
-Built and verified on a **MagicBook Pro 14 2026 (`ZQC-P`, board M1010)**.
-Sixteen further board revisions are recognised and none of them enabled: the
-rest of the Pro line, a second ZQC-P revision, and six machines from
-the other MagicBook lines that share a platform or a part. See
-[Models](#models) and [docs/hardware/](docs/hardware/).
+Built on a **MagicBook Pro 14 2026 (`ZQC-P`, board M1010)**. Further board
+revisions are recognised separately and enable only the fixes supported by
+evidence from that exact revision. `ZQC-P` M1020 was verified independently on
+BIOS 1.09 with a smaller safe subset. See [Models](#models) and
+[docs/hardware/](docs/hardware/).
 
 ```sh
 sudo ./apply_patch.sh
@@ -55,23 +55,25 @@ the codec is on HDA and unaffected. See
 ## Models
 
 Trust is per **board revision**, not per model. HONOR ships one product code as
-several machines: `ZQC-P` is board `M1010` here and board `M1050` elsewhere,
-with a different CPU; `FMB-P` is five revisions across three SKUs. So a profile
+several machines: `ZQC-P` is board `M1010` here, board `M1020` on the BIOS
+1.09 unit documented in this branch, and board `M1050` elsewhere with a
+different CPU; `FMB-P` is five revisions across three SKUs. So a profile
 has one section per revision, each with its own status, and a revision nobody
 has measured never inherits another one's.
 
-Seventeen board revisions across twelve product codes are recognised. What each
-one is, what is known about it, where every claim came from and what it would
-take to move it up: **[docs/hardware/](docs/hardware/)**. That is the record;
-this page does not repeat it.
+Board revisions across twelve product codes are recognised. What each one is,
+what is known about it, where every claim came from and what it would take to
+move it up: **[docs/hardware/](docs/hardware/)**. That is the record; this page
+does not repeat it.
 
-Two of those seventeen have any fixes enabled. In install order, **bold** where
+Three recognised boards have fixes enabled. In install order, **bold** where
 the fix runs and plain where it is listed but declines, which it does by name
 and with the value it is missing rather than silently:
 
 | Board | Fixes |
 |---|---|
 | `ZQC-P` `M1010` | **acpi-override** · **psr-band** · **oled-backlight** · **cdclk-ptl** · **edp-dsc** · **headset-mic** · **sof-audio** · **micmute** · **touchpad-edge** · **fan** · **fingerprint** · **battery** · **hotkeys** · **hotkey-actions** · **auto-rebuild** |
+| `ZQC-P` `M1020` | **acpi-override** · **micmute** · **touchpad-edge** · **fan** · **hotkeys** · **hotkey-actions** |
 | `ZQC-P` `M1050` | **acpi-override** · **psr-band** · **oled-backlight** · **cdclk-ptl** · **edp-dsc** · **headset-mic** · **sof-audio** · **micmute** · **touchpad-edge** · **fan** · **fingerprint** · **battery** · **hotkeys** · **hotkey-actions** · **auto-rebuild** |
 
 A board below `verified` gets only the tier A subset, and `apply_patch.sh`
@@ -79,8 +81,8 @@ refuses to start on one without `ALLOW_UNVERIFIED=1`. Every other board revision
 has no fixes at all, which is deliberate and is explained with the status words
 in [docs/hardware/README.md](docs/hardware/README.md#what-the-status-words-mean).
 
-The two rows above being equal is not the same as the evidence behind them being
-equal. What each rests on, fix by fix, is on
+The M1010 and M1050 rows being equal is not the same as the evidence behind
+them being equal. What each rests on, fix by fix, is on
 [the ZQC-P page](docs/hardware/zqc-p.md#what-the-verified-on-this-section-rests-on).
 
 The table is generated from the profiles, and `tools/selftest.sh` fails if it
@@ -132,8 +134,9 @@ unlocks everything. Below that, `apply_patch.sh` stops unless you pass
 machine's constants. What each status word means and what it allows:
 [`docs/hardware/README.md`](docs/hardware/README.md#what-the-status-words-mean).
 
-Two board sections are `verified`: `ZQC-P` `M1010`, the machine this was built
-on, and `ZQC-P` `M1050`, on the strength of a dump, an ACPI set and an install
+Three board sections are `verified`: `ZQC-P` `M1010`, the machine this was
+built on; `ZQC-P` `M1020`, with a smaller subset physically verified on BIOS
+1.09; and `ZQC-P` `M1050`, on the strength of a dump, an ACPI set and an install
 log from that machine. Detection reports which board it decided on, and says so
 plainly when that is not one the profile describes.
 
@@ -202,9 +205,10 @@ out. [`patch/README.md`](patch/README.md) is the index.
 
 **[Issue #11](https://github.com/rs0x29a/Linux-on-HONOR-MagicBook-14-Pro-2026-AI_ZQC-P_M1010/issues/11) is where this is tracked.** It lists where every model
 stands, what a dump has to contain, and which numbers cannot be read off a
-machine and have to be measured on it. Only `ZQC-P` board `M1010` is verified;
-everything
-else is waiting on somebody who owns one.
+machine and have to be measured on it. Three `ZQC-P` revisions have verified
+sections: M1010 and M1050 carry the full recorded set, while M1020 deliberately
+enables only the smaller subset tested on that board. Everything else is
+waiting on somebody who owns one.
 
 One read-only command produces everything needed to write a profile for it:
 
