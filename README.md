@@ -37,7 +37,7 @@ recognise it. `uninstall_patch.sh` reverts everything.
 | Battery charge limit does nothing | works | [`patch/battery/`](patch/battery/) — the EC only enforces HONOR's own preset pairs; anything else, including what the desktop sets, is stored and ignored |
 | Performance and camera keys do nothing | works | [`patch/hotkey-actions/`](patch/hotkey-actions/) — a small service acts on the keys the desktop ignores |
 | Some Fn keys dead, `Unknown key pressed` in dmesg | works | [`patch/hotkeys/`](patch/hotkeys/) — adds the HONOR codes to the `huawei-wmi` keymap |
-| Keyboard backlight state, KDE OSD and reboot persistence | works on ZQC-P M1020/C170; suspend restore pending test | [`patch/hotkeys/`](patch/hotkeys/) — exposes `platform::kbd_backlight`, reports the EC's 0/50/100 states and provides a configurable timeout |
+| Keyboard backlight state, KDE OSD and persistence | works on ZQC-P M1020/C170 | [`patch/hotkeys/`](patch/hotkeys/) — exposes `platform::kbd_backlight`, reports the EC's 0/50/100 states and restores the selected level after reboot and suspend/resume |
 | Fan RPM readout | works | [`patch/fan/`](patch/fan/) — `honor-ec-sensors` |
 | Fan speed control | not available | every OS-side path to a duty cycle was tested and the EC ignores all of them. The EC's *curve* can be selected through `\IFCI`, which is measured but deliberately not shipped, one of its thirteen tables switches the fans off. See [`patch/fan/README.md`](patch/fan/README.md) |
 | SOF DSP suspend/resume panic | preventive | [`patch/sof-audio/`](patch/sof-audio/) — upstream IPC4 backport, the race never reproduced here. Merged upstream and released in Linux 7.2 |

@@ -89,8 +89,8 @@ second brightness step.
 
 The LED uses `LED_CORE_SUSPENDRESUME`. systemd automatically attaches
 `systemd-backlight@leds:platform::kbd_backlight.service`, which saves and
-restores its last level across boots. Reboot restoration was physically
-verified on this unit; suspend/resume still needs verification.
+restores its last level across boots. Restoration after both reboot and
+suspend/resume was physically verified on this unit.
 
 The timeout defaults to 15 seconds. Set any value from 0 through 65535 by
 rerunning the installer; zero means no timeout:

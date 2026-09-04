@@ -450,8 +450,8 @@ confirmed to survive a reboot. The installer accepts
 value is persisted in `/etc/modprobe.d/61-honor-keyboard-backlight.conf`.
 Touchpad activity cannot safely rearm a timed-out backlight: `SKBM` changes the
 level but does not restart the timer, and `SKBL` is a firmware stub. The known
-raw EC `0x01` latch from a sibling model is not used. Suspend/resume restoration
-has not yet been physically tested.
+raw EC `0x01` latch from a sibling model is not used. The selected level was
+physically confirmed to survive suspend/resume as well as a full reboot.
 
 ## The speakers disagreement
 
