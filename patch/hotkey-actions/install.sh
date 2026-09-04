@@ -95,7 +95,7 @@ cat <<EOF
 ════════════════════════════════════════════════════════════════════
   Hotkey actions installed.
 
-  Performance key : cycles power-saver -> balanced -> performance
+  Performance key : $([[ "$POWER_PROFILE_KEY" == 1 ]] && echo "cycles power-saver -> balanced -> performance" || echo "off")
   Camera key      : deauthorises the webcam on the USB bus, so it leaves
                     /dev/video* entirely. Press again to bring it back.
 

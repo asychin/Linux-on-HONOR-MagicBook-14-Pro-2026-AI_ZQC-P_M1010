@@ -394,7 +394,8 @@ the measurement to redo are in
 
 ## The keyboard backlight is reachable
 
-Recorded as an open opportunity, not as something that works today.
+Implemented and physically verified on ZQC-P M1020/C170, BIOS 1.10 and Linux
+7.2.2. Other ZQC-P revisions remain gated out until tested on their hardware.
 
 It has been stated here that the backlight keys arrive but there is no LED
 device to drive. The firmware says otherwise. This machine's DSDT declares an
@@ -431,7 +432,26 @@ latch the level so it stops timing out. That is the same mapping `\SKBM`
 implements here, arrived at independently. What it would need is a DMI entry
 for this machine and somebody willing to test it.
 
-Nothing here drives it yet.
+The M1020 overlay now uses those firmware methods rather than raw EC writes.
+The physical key emitted `0x2b1`, `0x2b2`, `0x2b3` for off, low and high.
+`GKBM/SKBM` read and physically applied all three levels. An attempted `SKBM`
+value of 25 returned status `0x01` and left the mode unchanged, confirming that
+there are only two nonzero hardware levels, exposed to KDE as 50% and 100%.
+`GKBT` reported the stock 15-second timeout; setting `SKBT` to 5 read back as 5
+and physically switched the light off after about five seconds, after which 15
+was restored.
+
+The driver registers `/sys/class/leds/platform::kbd_backlight` with levels
+0/1/2 and hardware-change notification. After restarting UPower and PowerDevil,
+KDE showed the native keyboard OSD at 0%, 50% and 100%. systemd attached its
+standard backlight save/restore service, and the selected level was physically
+confirmed to survive a reboot. The installer accepts
+`KBDLIGHT_TIMEOUT=<0..65535>`, default 15; zero disables the timeout. A custom
+value is persisted in `/etc/modprobe.d/61-honor-keyboard-backlight.conf`.
+Touchpad activity cannot safely rearm a timed-out backlight: `SKBM` changes the
+level but does not restart the timer, and `SKBL` is a firmware stub. The known
+raw EC `0x01` latch from a sibling model is not used. Suspend/resume restoration
+has not yet been physically tested.
 
 ## The speakers disagreement
 

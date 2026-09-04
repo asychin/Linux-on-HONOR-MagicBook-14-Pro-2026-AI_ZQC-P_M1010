@@ -37,6 +37,7 @@ recognise it. `uninstall_patch.sh` reverts everything.
 | Battery charge limit does nothing | works | [`patch/battery/`](patch/battery/) — the EC only enforces HONOR's own preset pairs; anything else, including what the desktop sets, is stored and ignored |
 | Performance and camera keys do nothing | works | [`patch/hotkey-actions/`](patch/hotkey-actions/) — a small service acts on the keys the desktop ignores |
 | Some Fn keys dead, `Unknown key pressed` in dmesg | works | [`patch/hotkeys/`](patch/hotkeys/) — adds the HONOR codes to the `huawei-wmi` keymap |
+| Keyboard backlight state, KDE OSD and reboot persistence | works on ZQC-P M1020/C170; suspend restore pending test | [`patch/hotkeys/`](patch/hotkeys/) — exposes `platform::kbd_backlight`, reports the EC's 0/50/100 states and provides a configurable timeout |
 | Fan RPM readout | works | [`patch/fan/`](patch/fan/) — `honor-ec-sensors` |
 | Fan speed control | not available | every OS-side path to a duty cycle was tested and the EC ignores all of them. The EC's *curve* can be selected through `\IFCI`, which is measured but deliberately not shipped, one of its thirteen tables switches the fans off. See [`patch/fan/README.md`](patch/fan/README.md) |
 | SOF DSP suspend/resume panic | preventive | [`patch/sof-audio/`](patch/sof-audio/) — upstream IPC4 backport, the race never reproduced here. Merged upstream and released in Linux 7.2 |
@@ -152,6 +153,7 @@ plainly when that is not one the profile describes.
 | `SKIP_CDCLK=1` | leave the Panther Lake cdclk fix out of the `xe.ko` rebuild |
 | `SKIP_DSC=1` | leave the DSC preference out of it. Both run where the profile lists them; the build downloads the distro kernel source, about 260 MB, and compiles for a few minutes, and the two together build the module once |
 | `CHARGE_PRESET="40 70"` | which battery charge preset to arm. Only the pairs the EC enforces work, see [`patch/battery/README.md`](patch/battery/README.md) |
+| `KBDLIGHT_TIMEOUT=<seconds>` | ZQC-P M1020/C170 keyboard-backlight timeout; default 15, `0` means no timeout. The installer persists it in modprobe configuration |
 | `FORCE_ACPI=1` | install the ACPI override even though your machine's `I2C_DEVT` table is not the one it was built from. That mismatch means a BIOS update rewrote it or this is a different machine; read [docs/RESEARCH.md](docs/RESEARCH.md) first |
 | `ALLOW_UNVERIFIED=1` | run on a board whose profile section is not `verified`, restricted to the fixes that derive their own inputs |
 | `GUARD_ZERO=1` | add a udev rule that bounces a write of `0` to the backlight back to `1`. Writing 0 blanks the panel rather than dimming it, and no VBT value can prevent that. Off by default |
