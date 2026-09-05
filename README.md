@@ -74,7 +74,7 @@ and with the value it is missing rather than silently:
 | Board | Fixes |
 |---|---|
 | `ZQC-P` `M1010` | **acpi-override** · **psr-band** · **oled-backlight** · **cdclk-ptl** · **edp-dsc** · **headset-mic** · **sof-audio** · **micmute** · **touchpad-edge** · **fan** · **fingerprint** · **battery** · **hotkeys** · **hotkey-actions** · **auto-rebuild** |
-| `ZQC-P` `M1020` | **acpi-override** · **cdclk-ptl** · **micmute** · **touchpad-edge** · **fan** · **fingerprint** · **hotkeys** · **hotkey-actions** · **auto-rebuild** |
+| `ZQC-P` `M1020` | **acpi-override** · **cdclk-ptl** · **micmute** · **touchpad-edge** · **fan** · **fingerprint** · **battery** · **hotkeys** · **hotkey-actions** · **auto-rebuild** |
 | `ZQC-P` `M1050` | **acpi-override** · **psr-band** · **oled-backlight** · **cdclk-ptl** · **edp-dsc** · **headset-mic** · **sof-audio** · **micmute** · **touchpad-edge** · **fan** · **fingerprint** · **battery** · **hotkeys** · **hotkey-actions** · **auto-rebuild** |
 
 A board below `verified` gets only the tier A subset, and `apply_patch.sh`

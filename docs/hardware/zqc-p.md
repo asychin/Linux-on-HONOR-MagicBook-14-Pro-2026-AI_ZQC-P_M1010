@@ -593,11 +593,24 @@ The Goodix `27c6:6f94` reader reported no devices with stock libfprint
 Goodix MOC ID patch enrolled `right-index-finger`, returned `verify-match`, and
 authenticated `sudo`. Password authentication remains as fallback.
 
-The following results are deliberately not promoted into the M1020 fix list:
+The battery limit was later brought up on this board, on BIOS 1.10 and
+`linux-cachyos 7.2.2-1`. Out of the box, writing `70 90` through `huawei-wmi`
+left EC charge mode `0` on both BIOS 1.09 and 1.10, and `GBCM` (WMI `0x1603`)
+read back `mode 0x00, 0x86 = 0x48, start 75, stop 90`, the pair the desktop
+had written. One `\SBCM` call (WMI `0x1503`, payload `0x5a4648021503`) set
+mode `2`; a second, `0x462848011503`, set mode `1`. With `40 70` armed and the
+pack at 65% on the adapter, it charged at about 2.1 A to exactly 70% and
+stopped: `status` `Not charging`, `current_now` 0, held for several minutes.
+After that first `\SBCM`, plain sysfs writes behaved like the M1010: `75 90`
+gave mode 0, `0 100` gave mode 0, `70 90` gave mode 2, immediately and not
+after a delay. The state survived a reboot: the EC came up with `70 90 / mode
+2`, and `0 100` then `70 90` through sysfs disarmed and re-armed it without
+`\SBCM`. `patch/battery/` gained the `\SBCM` fallback and an M1020 recipe on
+the strength of this, and `battery` was added to the board's fix list. Whether
+the latch survives a full power-off with the adapter removed is not yet
+measured; the fallback makes that immaterial for the fix.
 
-- **Battery:** on BIOS 1.10, writing `70 90` through `huawei-wmi` still left EC
-  charge mode `0`; the limiter was not armed. The setting was restored to
-  `0 100`, and no battery service was installed.
+The following results are deliberately not promoted into the M1020 fix list:
 - **Headset microphone:** an out-of-tree `snd-hda-codec-alc269` built from
   vanilla v7.0 source crashed Ubuntu's backported HDA stack in
   `try_assign_dacs()` during boot. The overlay and temporary M1020 recipe were
