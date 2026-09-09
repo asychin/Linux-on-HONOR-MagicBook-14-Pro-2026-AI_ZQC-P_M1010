@@ -151,6 +151,34 @@ committing it.
 
 ---
 
+## Read the HONOR performance state
+
+On `ZQC-P`, `tools/windows/honor-wmi-read` provides a strictly read-only
+wrapper for the firmware getters `GTUB`, `GFCI`, `GVRF`, and both `GFNS` fan
+channels. It calls the signed `Util.dll` installed with HONOR PC Manager and does not expose arbitrary
+WMI payloads or setter methods.
+
+Build it from a normal command prompt:
+
+```bat
+tools\windows\honor-wmi-read\build.cmd
+```
+
+Run the resulting executable from an **administrator** command prompt:
+
+```bat
+tools\windows\honor-wmi-read\bin\HonorWmiRead.exe
+tools\windows\honor-wmi-read\bin\HonorWmiRead.exe gtub gfci gvrf fan0 fan1
+```
+
+The tool refuses to run unless `SystemProductName` is `ZQC-P`. Administrative
+rights are required by the firmware WMI provider; without them it reports
+`0x80041003` (`WBEM_E_ACCESS_DENIED`). The output includes `CRWM`, `FTSL`,
+`VRMS`, `PPL4`, the eight words returned by `GVRF`, both fan RPM values, and
+the first 32 raw bytes for independent decoding.
+
+---
+
 ## Before you publish one
 
 A registry export contains machine-specific and sometimes personal data. This

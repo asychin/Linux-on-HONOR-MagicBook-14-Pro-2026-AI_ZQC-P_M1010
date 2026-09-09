@@ -19,3 +19,24 @@ __pycache__/
 # must never be added here.
 dump/win11/*/*.reg
 /AGENT.md
+/AGENTS.md
+/tools/windows/honor-wmi-read/bin/
+/tools/windows/honor-wmi-read/obj/
+
+# boost reverse-engineering tooling build artifacts
+/tools/honor-boost/*.o
+/tools/honor-boost/*.ko
+/tools/honor-boost/*.mod
+/tools/honor-boost/*.mod.c
+/tools/honor-boost/*.order
+/tools/honor-boost/*.o.cmd
+/tools/honor-boost/*.ko.cmd
+/tools/honor-boost/*.mod.cmd
+/tools/honor-boost/*.mod.o.cmd
+/tools/honor-boost/.*.cmd
+/tools/honor-boost/Module.symvers
+/tools/honor-boost/modules.order
+/tools/honor-boost/.tmp_versions/
+/tools/honor-boost/spin
+/tools/honor-boost/nspin
+/tools/honor-boost/acpi_call/

@@ -209,9 +209,15 @@ in mainline `huawei-wmi`, so the EC keeps its conservative default profile.
 Under Linux the machine is quieter and throttles earlier.
 
 Intel RAPL package power is firmware-capped at **50 W**, not the 88 W the
-`intel_rapl` constraints advertise. The cap is enforced by the EC through the
-`VCCC` register, not by RAPL. Per-core clocks under sustained load settle
-around 3.3 GHz.
+`intel_rapl` constraints advertise. The cap is **not** the `VCCC` rail (which
+reads `0xFF` = unlocked at boot); it is the EC's own power-budget registers
+`PP1R`/`PP2R` (`ECF6 0xC2`/`0xC3`, default 40 W / 50 W). Windows DTT raises
+them to 88 W via `\_SB.IETM.IMOK` (the `DTTF` flag), which is why Windows spins
+the fans earlier and draws more — but on ZQC-P the cooling still caps sustained
+package power at ~50 W, so the raised budget buys no CPU throughput. Per-core
+clocks under sustained load settle around 3.3 GHz. Full reverse-engineering
+notes are in `boost-refactoring.md`; the read/write tooling is
+`tools/honor-boost/`.
 
 ## EC register map
 
